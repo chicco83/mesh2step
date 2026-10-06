@@ -18,7 +18,7 @@ Replica clean-room di mesh2solid.thavision.com con le funzioni "Pro" gratis e va
 | Voce | Stato |
 |---|---|
 | Versione | **1.4.0** (`main`; v1.3.1 `8ed5664`, v1.3.2 `b159b48`) |
-| Sito Pages | online; interfaccia provata nel browser integrato (1.3.2): tema chiaro/scuro, selezione, unione/annulla, deviazione, export STEP/STL/OBJ |
+| Sito Pages | ✅ online alla 1.4.0, provato il 2026-10-07: bolt_m6 (opzione filettatura→cilindro: 5 facce, 2 cilindri), PDF, toro (2 facce toroidali), service worker attivo, console pulita. Provati in locale (1.3.2–1.4.0): tema chiaro/scuro, selezione, unione/annulla, deviazione, riparazione, export STEP/STL/OBJ |
 | Test core + OpenCASCADE | 16 STEP `valid=True` (14 + `sphere_full` + `bolt_m6_threadcyl`); `test_repair.js`, `test_pdf.js` ok (vedi §6) |
 | CI GitHub (`ci.yml`) | ✅ verde dalla 1.3.2 (fix dipendenze Python); dalla 1.4.0 esegue anche i test di riparazione e PDF — **controllare l'esito del push 1.4.0** |
 | App Windows (`desktop/`) | exe compilato da Linux (72 MB), **mai avviato su Windows**: da provare (§8, priorità 1) |

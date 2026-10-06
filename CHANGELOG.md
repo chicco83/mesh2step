@@ -16,7 +16,7 @@ Versione documento: 1.4.0 — 2026-10-07 00:23
   fori/filettature/alberi), scritto a mano senza librerie. Test: `tests/test_pdf.js`.
 - **Deviazione B-spline per triangolo** (scarto verticale dei vertici dalla superficie) al posto del solo massimo della regione.
 - Il comando `step` del worker accetta `threadCyl`; nuovo comando `pdf`.
-- Console "An unknown error occurred when fetching the script": viene dalla registrazione del service worker nel **browser integrato** di Claude Code (`navigator.serviceWorker.register('sw.js')` fallisce lì anche con `sw.js` servito 200); l'app la ignora (`.catch`) e funziona. Non riprodotto/verificato in Chrome normale: da controllare lì se il PWA offline serve.
+- Console "An unknown error occurred when fetching the script": succede solo su `http://localhost` nel **browser integrato** di Claude Code (la registrazione del service worker fallisce lì); su Pages (https) il service worker è attivo (cache `mesh2step-1.4.0`) e la console è pulita. Provato il 2026-10-07.
 - Rollback: `git revert` del commit di questa versione; l'opzione filettature è spenta di default, quindi l'export STEP standard non cambia per le filettature.
 
 ## 9. [1.3.2] — 2026-10-06 21:46 — Deviazione B-spline e colore di selezione (tema chiaro)
