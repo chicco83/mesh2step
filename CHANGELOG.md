@@ -1,5 +1,9 @@
 # CHANGELOG — Mesh2STEP
-Versione documento: 1.3.1 — 2026-10-06 20:32
+Versione documento: 1.3.1 — 2026-10-06 20:40
+
+## 8. [1.3.1 · CI] — 2026-10-06 20:40 — Fix workflow ci.yml
+- La CI falliva in «Mesh di prova»: mancava `networkx` (export 3MF di trimesh); aggiunti anche `numpy` e `lxml`.
+- Stesse dipendenze aggiunte in `CLAUDE.md` §3. Rollback: `git revert` del commit.
 
 ## 7. [1.3.1] — 2026-10-06 20:32 — Viewer: colori, selezione, navigazione
 - Colori delle facce **solo per tipo** (come in legenda): tolta la variazione casuale per regione.

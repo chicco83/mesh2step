@@ -28,7 +28,7 @@ Replica clean-room di mesh2solid.thavision.com con le funzioni "Pro" gratis e va
 | Strumento | Uso | Note |
 |---|---|---|
 | Node.js ≥ 18 | `tests/run_core.js`, `build.mjs` | serve `DecompressionStream` (3MF) |
-| Python ≥ 3.10 | `tests/make_samples.py`, `tests/check_step.py` | `pip install trimesh manifold3d cadquery-ocp` (OCP = OpenCASCADE, ~100 MB) |
+| Python ≥ 3.10 | `tests/make_samples.py`, `tests/check_step.py` | `pip install numpy trimesh manifold3d cadquery-ocp networkx lxml` (OCP = OpenCASCADE, ~100 MB) |
 | .NET 8 SDK | solo per l'exe Windows | `desktop\build-desktop.ps1` (Windows) o `desktop/build-desktop.sh` |
 | Browser | prova dell'interfaccia | servire la cartella via HTTP: `python -m http.server 8000` (il Worker e il service worker non partono da `file://`; la build in `dist/` invece sì) |
 | Playwright (facoltativo) | test end-to-end della UI | `npm i playwright` in una cartella di lavoro **fuori dal repo** |
