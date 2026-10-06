@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — core.js
- * Versione: 1.3.1 — 2026-10-06 20:32 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
+ * Versione: 1.3.2 — 2026-10-06 21:45 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
  * ---------------------------------------------------------------------------
  * Motore indipendente dalla UI (gira nel Web Worker del browser e in Node per i test).
  *   1. Parsing  : STL (binario/ASCII), OBJ, 3MF (zip letto a mano + DecompressionStream)
@@ -12,7 +12,7 @@
  */
 (function (root) {
   'use strict';
-  const VERSION = '1.3.1';
+  const VERSION = '1.3.2';
 
   // ===================== Helper vettoriali (array [x,y,z]) =====================
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -1317,7 +1317,8 @@
     const dev = new Float32Array(M.nT); let mx = 0;
     for (let t = 0; t < M.nT; t++) {
       const r = seg.regions[seg.face[t]]; let d = 0;
-      if (r.type === 'bspline' && r.devTri) d = r.devTri.get(t) || 0;
+      // [2026-10-06 v1.3.2] prima: if (r.type === 'bspline' && r.devTri) d = r.devTri.get(t) || 0;  (devTri non è mai impostato -> sempre 0, mappa tutta verde)
+      if (r.type === 'bspline') d = r.devTri ? (r.devTri.get(t) || 0) : (r.err || 0);   // senza dato per triangolo: scarto massimo del fit della regione
       else for (let k = 0; k < 3; k++) d = Math.max(d, surfDist(r, M.P(M.T[3 * t + k])));
       dev[t] = d; mx = Math.max(mx, d);
     }

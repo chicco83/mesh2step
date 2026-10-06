@@ -1,11 +1,11 @@
 <!doctype html>
 <!--
   Mesh2STEP — index.html
-  Versione: 1.3.0 — 2026-10-06 13:40 (Europe/Rome)
+  Versione: 1.3.2 — 2026-10-06 21:46 (Europe/Rome)
   Versione precedente archiviata: archive/index_v1.0.1_20261006-1310.html
   (2026-10-06: nuova UI con editing facce, corpi, report, export STL/OBJ, deviazione, viste, IT/EN,
    tema chiaro, PWA offline con three.js locale in vendor/).
-  Build portabile single-file 20261006-2232: completamente offline (three.js incorporato).
+  Build portabile single-file 20261006-2346: completamente offline (three.js incorporato).
 -->
 <html lang="it">
 <head>
@@ -15,9 +15,7 @@
 <title>Mesh2STEP</title>
 <meta name="description" content="Converte mesh STL/OBJ/3MF in solidi CAD STEP con piani, cilindri, coni, sfere, tori e B-spline reali. Tutto nel browser, nessun upload.">
 <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAYAAABS3GwHAAAFjUlEQVR4nO3dTW5URxiF4TLKGCFkIWUPkWANSGwD74AVMGQF2UHYQJAYWmLIiIGRPGdoyUM2AJOUfNPuvn1/qur7Oe+zgVzj8/rrSyC5ePb88lcBRD2xfgDAEgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgEYu7q9tn4EaRf8L5JsHBv+P3+9MXgSbVwAA6d+6nMNxuMCDLRm4FyDMQhggD0/2QmhLwLoqOVHGkLog3eATlp/nuf9oA8uQGMjhso1aIcAGrH4CU0I+xHATh4+mhDCdrwD7OBh/KX4eY6IuAAbeB4c12AdAljB8/APEcIyBLBApOEfIoR5vAOcEXn8pcR//t64ACdkHA7X4DECOJBx+IcI4QEB/Edh+IcIgXeAUorm+EvR/bqnpC8AA3igeg0kA2D4p6mFIBUAw19OJQSZADyMf82ooj1vVOkDsBxSywFl+Tq8SRtA1sFk/bqspAtAZSAqX2dvqQKwGoXlIBS/5pZSBKD+01D969/jD+sH2MPD75Soq9+DqCGEvABehu/pm86vyTbh/iwQ3+jjvDyPl+/PUmE+AkX7hVUW6WOR+wvw8stHxh/U1e11efrhnfVjzApxAW7u70oppbx68afxk2Cpfz99tn6ERdxfgKkaAnyLMv5SglyAKS/X4Or22tVnXA8fEyMNvwoXQOUhBC8RWI8/4vCrsAFUHkJQFXn4Vah3gDlW7wfWP32t/vkZxl9KggswZXUNLH7fm+G3kSqAKnMIDL+tlAFUmUJg+H2kDqC6ub8zeUk+HG20vxOcffyliARQio/fLfIw6iUUhl/JBFB5CMErpeFXcgFUhPBAcfhVmn8PsJX6ny9SHn8pwhdgSvEaqA+/IoAJhRAY/v8RwBEZQ2D4x8m/A8zJ8n7A+E/jApwR+Row/PMIYKFIITD85QhgJc8hMPz1eAfYyNv7AePfhguwg4drwPD3IYAGLEJg+G0QQEMjQmD4bfEO0EGv9wPG3x4XoJOW14Dh90MAne0JgeH3RwCDrAmB4Y/DO8Bg594PGP9YXAADx64Bw7dBAIZu7u/Kj6/frB9DGh+BII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AIO3i2fPLX9YPscTLLx+tH6GLzP959J/v/7Z+hLPCBFBlCyFjABGGX4X7CPT99VvrR8CMSOMvJeAFmMpwDbJcgGjDr0IHUEUOIXoAUYdfpQigihhC1ACiD78K9w4wh/eDMbKMv5RkF2AqyjWIdAEyDb9KG0DlPYQIAWQcfpU+gMprCJ4DyDz8KtU7wBzeD9ZRGH8pQhdgytM18HYBVIZfSQZQeQjBSwBqw6+kA6gsQ7AOQHX4lcw7wBzV9wP18ZfCBXhk9DWwuAAM/wEBnDAqhJEBMPzHCOCM3iGMCIDhn8Y7wBnR3w8Y/zwuwAo9rkGvC8DwlyGADVqG0DoAhr8OAezQIoRWATD8bXgH2MHL+wHj344L0MjWa7DnAjD8/QigsbUhbAmA4bdDAJ0sDWFNAAy/Pd4BOmn9fsD4++ACDDB3Dc5dAIbfFwEMdCyEUwEw/DEIwMA0hMMAGP5YvAMYOPV+wPjH4wIYe/rhHcM3RACQxkcgSCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASPsNHuct18Ad98YAAAAASUVORK5CYII=">
-<link rel="manifest" href="manifest.webmanifest">
 <!-- three.js locale (offline): vendor/ -->
-
 <style>
   /* ===== Token colore: tema scuro (default) ===== */
   :root {
@@ -28,7 +26,7 @@
   /* ===== Tema chiaro ===== */
   :root[data-theme="light"] {
     --bg: #f4f5f6; --panel: #ffffff; --line: #dde1e5; --field: #f1f3f5; --fg: #1d2125; --dim: #5f6872;
-    --accent: #0f8f7a; --accent-ink: #ffffff; --warn: #a86a00; --err: #c73535; --sel: #0a0a0a;
+    --accent: #0f8f7a; --accent-ink: #ffffff; --warn: #a86a00; --err: #c73535; --sel: #1f3bff;
     --view-bg: #e9ecef;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -220,7 +218,7 @@
 
 <script id="worker-src" type="text/plain">/*
  * Mesh2STEP — core.js
- * Versione: 1.3.1 — 2026-10-06 20:32 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
+ * Versione: 1.3.2 — 2026-10-06 21:45 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
  * ---------------------------------------------------------------------------
  * Motore indipendente dalla UI (gira nel Web Worker del browser e in Node per i test).
  *   1. Parsing  : STL (binario/ASCII), OBJ, 3MF (zip letto a mano + DecompressionStream)
@@ -232,7 +230,7 @@
  */
 (function (root) {
   'use strict';
-  const VERSION = '1.3.1';
+  const VERSION = '1.3.2';
 
   // ===================== Helper vettoriali (array [x,y,z]) =====================
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -1537,7 +1535,8 @@
     const dev = new Float32Array(M.nT); let mx = 0;
     for (let t = 0; t < M.nT; t++) {
       const r = seg.regions[seg.face[t]]; let d = 0;
-      if (r.type === 'bspline' && r.devTri) d = r.devTri.get(t) || 0;
+      // [2026-10-06 v1.3.2] prima: if (r.type === 'bspline' && r.devTri) d = r.devTri.get(t) || 0;  (devTri non è mai impostato -> sempre 0, mappa tutta verde)
+      if (r.type === 'bspline') d = r.devTri ? (r.devTri.get(t) || 0) : (r.err || 0);   // senza dato per triangolo: scarto massimo del fit della regione
       else for (let k = 0; k < 3; k++) d = Math.max(d, surfDist(r, M.P(M.T[3 * t + k])));
       dev[t] = d; mx = Math.max(mx, d);
     }
@@ -3456,7 +3455,7 @@ export { OrbitControls };
 </script>
 <script id="app-src" type="text/plain">/*
  * Mesh2STEP — app.js
- * Versione: 1.3.1 — 2026-10-06 20:32 (Europe/Rome)
+ * Versione: 1.3.2 — 2026-10-06 21:45 (Europe/Rome)
  * Versione precedente archiviata: archive/app_v1.0.1_20261006-1310.js
  * (2026-10-06: riscritta per editing facce, corpi, report CSV, export STL/OBJ, heatmap deviazione,
  *  viste, IT/EN, tema chiaro, condivisione, PWA e API di integrazione).
@@ -3466,7 +3465,7 @@ export { OrbitControls };
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const VERSION = '1.3.1';
+const VERSION = '1.3.2';
 const $ = id => document.getElementById(id);
 const store = { get: k => { try { return localStorage.getItem('m2s.' + k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem('m2s.' + k, v); } catch { /* storage non disponibile */ } } };
 

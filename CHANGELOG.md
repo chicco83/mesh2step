@@ -1,5 +1,12 @@
 # CHANGELOG — Mesh2STEP
-Versione documento: 1.3.1 — 2026-10-06 20:40
+Versione documento: 1.3.2 — 2026-10-06 21:46
+
+## 9. [1.3.2] — 2026-10-06 21:46 — Deviazione B-spline e colore di selezione (tema chiaro)
+- Mappa di deviazione: le regioni B-spline risultavano sempre a 0 (`devTri` non veniva mai impostato) e quindi tutte verdi.
+  Ora usano lo scarto massimo del fit della regione (per `bump`: 0,0022 mm). Provato nel browser.
+- Selezione nel tema chiaro: blu `#1f3bff` al posto del quasi nero (nascondeva l'ombreggiatura).
+- Provati nel browser: tema chiaro, modalità deviazione, export STEP/STL/OBJ. Test core + OCP: 14 STEP valid=True.
+- Rollback: `git revert` del commit.
 
 ## 8. [1.3.1 · CI] — 2026-10-06 20:40 — Fix workflow ci.yml
 - La CI falliva in «Mesh di prova»: mancava `networkx` (export 3MF di trimesh); aggiunti anche `numpy` e `lxml`.
