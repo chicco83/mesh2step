@@ -1,5 +1,5 @@
 # CONTEXT — Mesh2STEP
-Versione documento: 1.4.0 — 2026-10-07 00:23
+Versione documento: 1.4.1 — 2026-10-07 00:43
 
 ## Scopo
 Web app che converte mesh triangolari (STL, OBJ, 3MF) in file STEP con **geometria CAD reale**:
@@ -68,13 +68,13 @@ index.html ── src/app.js (UI, viewer three.js, i18n, editing, export, API in
 - **Non** fatto, di proposito: ricostruzione di auto-intersezioni (richiede booleane robuste); filettatura che sostituisce il cilindro
   nello STEP senza opzione (cambierebbe il volume senza che l'utente lo scelga).
 - Editing manuale: le regioni unite devono essere contigue (una faccia = una zona connessa).
-- App Windows con WebView2 (stessa scelta di 3D STL Multipart Maker), file web come risorse incorporate.
+- App Windows con WebView2 (stessa scelta di 3D STL Multipart Maker), file web come risorse incorporate. [2026-10-07] I nomi delle risorse si normalizzano (`\` → `/`): `%(RecursiveDir)` dà backslash sui build Windows.
 
 ## Limiti noti v1.4.0
 - B-spline solo per zone "campo di altezze"; deviazione di freeform e filettature = 0 (nessuna superficie di riferimento).
 - Riparazione: buchi e non-manifold; non le auto-intersezioni.
 - Report PDF su una sola pagina.
-- Exe Windows compilato ma non ancora provato su Windows.
+- Exe Windows provato (v1.4.1) ma non «Apri con…»/trascinamento né un PC senza WebView2.
 
 ## Cronologia delle sessioni
 | Data | Sessione | Esito |
@@ -82,10 +82,10 @@ index.html ── src/app.js (UI, viewer three.js, i18n, editing, export, API in
 | 2026-10-05 | Cowork cloud | Analisi del sito di riferimento, v1.0.0 (piani, cilindri, sfere, STEP), commit `729f9ed` caricato dall'utente |
 | 2026-10-06 mattina | Cowork cloud | v1.0.1 README completo; v1.1.0–1.3.0 tutte le migliorie (commit `e1e10bb`, `61c8f81`), consegnate come git bundle perché la sessione non poteva fare push; pubblicate dall'utente; Pages verificato online |
 | 2026-10-06 14:10 | Cowork cloud | Documentazione per riprendere il lavoro da Claude Code |
-| 2026-10-07 | Claude Code (locale) | v1.3.1–1.3.2: colori per tipo, selezione, deviazione B-spline, fix CI, prova UI nel browser integrato. v1.4.0: filettature→cilindro, sfere spurie, sfera/toro completi, non-manifold, report PDF |
+| 2026-10-07 | Claude Code (locale) | v1.3.1–1.3.2: colori per tipo, selezione, deviazione B-spline, fix CI, prova UI nel browser integrato. v1.4.0: filettature→cilindro, sfere spurie, sfera/toro completi, non-manifold, report PDF. v1.4.1: primo avvio reale dell'exe su Windows 11 (bug risorse con backslash corretto) |
 
 ## Problemi aperti
-- Exe Windows mai avviato su Windows (compilato da Linux con `EnableWindowsTargeting`).
+- App Windows: da provare «Apri con…»/trascinamento sull'exe e l'avvio su un PC senza runtime WebView2.
 - Pulsante «Converti in STEP» da aggiungere nel repo 3D STL Multipart Maker.
 - Auto-intersezioni non riparate.
 - B-spline per superfici che si richiudono; deviazione per freeform/filettature.

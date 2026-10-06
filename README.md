@@ -1,5 +1,5 @@
 # Mesh2STEP
-Versione: 1.4.0 — 2026-10-07 00:23
+Versione: 1.4.1 — 2026-10-07 00:43
 <!-- [2026-10-06 13:45] Versione precedente 1.0.1 (2026-10-06 13:10): README delle funzioni v1.0
      (piani, cilindri, sfere); aggiornato con tutte le funzioni v1.1–v1.3. -->
 
@@ -190,7 +190,7 @@ Regole di versioning, documentazione e git: [CLAUDE.md](CLAUDE.md).
 - B-spline solo per zone tipo "campo di altezze"; superfici organiche che si richiudono restano sfaccettate.
 - Riparazione: buchi e spigoli non-manifold; **non** le auto-intersezioni.
 - Report PDF: una sola pagina (righe oltre ~28 troncate).
-- App Windows compilata ma non ancora provata su Windows.
+- App Windows provata su Windows 11 (avvio, file da argomento, export); non ancora «Apri con…»/trascinamento né un PC senza WebView2.
 
 Stato di tutte le migliorie: [IMPROVEMENTS.md](IMPROVEMENTS.md).
 

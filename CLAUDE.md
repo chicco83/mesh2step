@@ -1,5 +1,5 @@
 # CLAUDE.md — Mesh2STEP
-Versione: 1.4.0 — 2026-10-07 00:23
+Versione: 1.4.1 — 2026-10-07 00:43
 <!-- [2026-10-06 14:10] versione precedente (2026-10-06 13:45, commit 61c8f81): solo regole di versioning,
      documenti, test, git e progetto. Ora anche stato, ambiente, mappa del codice, insidie e prossimi passi
      per riprendere il lavoro da Claude Code. Le regole precedenti sono riportate invariate qui sotto. -->
@@ -17,11 +17,11 @@ Replica clean-room di mesh2solid.thavision.com con le funzioni "Pro" gratis e va
 ## 2. Stato al 2026-10-07 00:23
 | Voce | Stato |
 |---|---|
-| Versione | **1.4.0** (`main`; v1.3.1 `8ed5664`, v1.3.2 `b159b48`) |
+| Versione | **1.4.1** (`main`; v1.4.0 `d7cae0c`, v1.4.1 `bbabd2f`) |
 | Sito Pages | ✅ online alla 1.4.0, provato il 2026-10-07: bolt_m6 (opzione filettatura→cilindro: 5 facce, 2 cilindri), PDF, toro (2 facce toroidali), service worker attivo, console pulita. Provati in locale (1.3.2–1.4.0): tema chiaro/scuro, selezione, unione/annulla, deviazione, riparazione, export STEP/STL/OBJ |
 | Test core + OpenCASCADE | 16 STEP `valid=True` (14 + `sphere_full` + `bolt_m6_threadcyl`); `test_repair.js`, `test_pdf.js` ok (vedi §6) |
 | CI GitHub (`ci.yml`) | ✅ verde dalla 1.3.2 (fix dipendenze Python); dalla 1.4.0 esegue anche i test di riparazione e PDF — **controllare l'esito del push 1.4.0** |
-| App Windows (`desktop/`) | exe compilato da Linux (72 MB), **mai avviato su Windows**: da provare (§8, priorità 1) |
+| App Windows (`desktop/`) | ✅ provata su Windows 11 il 2026-10-07 con la build CI 1.4.1 (WebView2 154): avvio, apertura file da argomento, analisi, export STEP/PDF/STL salvati su disco (STEP rivalidati con OCP: `valid=True`). Bug trovato e corretto: risorse in sottocartelle (backslash in `RecursiveDir`). **Non provati**: «Apri con…»/trascinamento sull'exe, SmartScreen su altro PC, installazione pulita senza WebView2 |
 | Migliorie | stato per voce in `IMPROVEMENTS.md` (✅ / 🟡 parziale / ⏸️ rinviata) |
 
 ## 3. Ambiente di sviluppo
@@ -147,7 +147,7 @@ Tutti devono essere `valid=True`; `check_step.py` esce con codice 1 altrimenti.
 
 ## 8. Prossimi passi (in ordine di priorità)
 Fatti il 2026-10-07 (v1.4.0): filettature→cilindro nominale, sfere spurie, sfera/toro completi, riparazione non-manifold, report PDF, deviazione B-spline per triangolo.
-1. **Provare l'exe Windows** (Actions → *desktop* → *Run workflow*, oppure `desktop\build-desktop.ps1`): avvio,
+1. ~~Provare l'exe Windows~~ ✅ fatto il 2026-10-07 (v1.4.1). Restano da provare «Apri con…» / trascinamento sull'exe e un PC senza WebView2.
    apertura file da argomento/trascinamento, download STEP dentro WebView2. Correggere `Program.cs` se serve. (Serve un PC Windows.)
 2. **Controllare l'esito di `ci.yml`** dopo il push della 1.4.0.
 3. Pulsante "Converti in STEP" in 3D STL Multipart Maker (repo `3d-stl-multipart-maker`) che apre Mesh2STEP via `postMessage` (API in `MANUAL.md` §9) — altro repository.

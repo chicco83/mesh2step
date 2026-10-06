@@ -1,5 +1,5 @@
 # MIGLIORIE — Mesh2STEP
-Versione documento: 1.4.0 — 2026-10-07 00:23
+Versione documento: 1.4.1 — 2026-10-07 00:43
 <!-- [2026-10-06 13:45] versione precedente 1.0.0 (2026-10-05 17:10): elenco proposte tutte "da fare";
      aggiornato con lo stato di realizzazione. -->
 
@@ -22,14 +22,14 @@ Stato: ✅ fatto · 🟡 parziale · ⏸️ valutato e rinviato.
 | 12 | "Apri in Fusion/FreeCAD" | 🟡 | 1.2.0 | Da browser non si può lanciare un CAD locale senza server: c'è **Condividi STEP** (telefono) e l'app Windows apre i file dal sistema |
 | 13 | 3MF: trasformazioni e nomi | ✅ | 1.1.0 | |
 | 14 | PWA offline | ✅ | 1.3.0 | |
-| 15 | App Windows portabile + integrazione con 3D STL Multipart Maker | 🟡 | 1.3.0 | Exe WebView2 compilato (da provare su Windows); API `postMessage`/`?url=` pronte, il pulsante lato Multipart Maker va aggiunto in quel progetto |
+| 15 | App Windows portabile + integrazione con 3D STL Multipart Maker | 🟡 | 1.4.1 | Exe WebView2 **provato su Windows 11** (1.4.1): avvio, file da argomento, export. Il pulsante lato Multipart Maker va aggiunto in quel progetto (API `postMessage`/`?url=` pronte) |
 | 16 | Core Rust/WASM | ⏸️ | — | Non serve ora: 205 k triangoli in 3 s |
 | 17 | CI GitHub Actions | ✅ | 1.3.0 | `ci.yml` verde dal 2026-10-06 (mancavano `networkx`/`lxml`/`numpy`); dalla 1.4.0 esegue anche `test_repair.js` e `test_pdf.js` |
 | 18 | IT/EN, tema chiaro, viste | ✅ | 1.2.0 | |
 
 ## Prossimi passi proposti
 <!-- [2026-10-07] elenco precedente (8 voci, 1.3.0): fatte filettature→cilindro, sfere spurie, sfera/toro completi, non-manifold, PDF -->
-1. **Provare l'exe Windows** (Actions → *desktop*, o `desktop\build-desktop.ps1`) — richiede un PC Windows.
+1. ~~Provare l'exe Windows~~ ✅ 2026-10-07 (trovato e corretto il bug delle risorse in sottocartelle). Restano: «Apri con…»/trascinamento, PC senza WebView2.
 2. Pulsante «Converti in STEP» in 3D STL Multipart Maker (repo `3d-stl-multipart-maker`) che apre Mesh2STEP via `postMessage` (API in `MANUAL.md` §9) — è un altro repository.
 3. Auto-intersezioni: rilevamento e riparazione (booleane robuste).
 4. B-spline per superfici che si richiudono (tubi organici): oggi restano sfaccettate.
