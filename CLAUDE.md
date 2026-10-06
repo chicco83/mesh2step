@@ -1,5 +1,5 @@
 # CLAUDE.md — Mesh2STEP
-Versione: 1.3.0 — 2026-10-06 14:10
+Versione: 1.4.0 — 2026-10-07 00:23
 <!-- [2026-10-06 14:10] versione precedente (2026-10-06 13:45, commit 61c8f81): solo regole di versioning,
      documenti, test, git e progetto. Ora anche stato, ambiente, mappa del codice, insidie e prossimi passi
      per riprendere il lavoro da Claude Code. Le regole precedenti sono riportate invariate qui sotto. -->
@@ -14,13 +14,13 @@ Replica clean-room di mesh2solid.thavision.com con le funzioni "Pro" gratis e va
 - Repo: `https://github.com/chicco83/mesh2step` — sito: `https://chicco83.github.io/mesh2step/` (Pages da `main` / root)
 - Copia locale dell'utente: `G:\Il mio Drive\CRISTIANO\VIBE CODING\mesh2step` (cartella Google Drive)
 
-## 2. Stato al 2026-10-06 14:10
+## 2. Stato al 2026-10-07 00:23
 | Voce | Stato |
 |---|---|
-| Versione | **1.3.0** (commit `61c8f81` su `main`) |
-| Sito Pages | online alla 1.3.0, provato con Playwright: analisi ok, nessun errore console |
-| Test core + OpenCASCADE | 14 STEP tutti `valid=True` (vedi §6) |
-| CI GitHub (`ci.yml`) | **esito non verificato** (la sessione cloud non vedeva le Actions): controllare la scheda *Actions* |
+| Versione | **1.4.0** (`main`; v1.3.1 `8ed5664`, v1.3.2 `b159b48`) |
+| Sito Pages | online; interfaccia provata nel browser integrato (1.3.2): tema chiaro/scuro, selezione, unione/annulla, deviazione, export STEP/STL/OBJ |
+| Test core + OpenCASCADE | 16 STEP `valid=True` (14 + `sphere_full` + `bolt_m6_threadcyl`); `test_repair.js`, `test_pdf.js` ok (vedi §6) |
+| CI GitHub (`ci.yml`) | ✅ verde dalla 1.3.2 (fix dipendenze Python); dalla 1.4.0 esegue anche i test di riparazione e PDF — **controllare l'esito del push 1.4.0** |
 | App Windows (`desktop/`) | exe compilato da Linux (72 MB), **mai avviato su Windows**: da provare (§8, priorità 1) |
 | Migliorie | stato per voce in `IMPROVEMENTS.md` (✅ / 🟡 parziale / ⏸️ rinviata) |
 
@@ -28,7 +28,7 @@ Replica clean-room di mesh2solid.thavision.com con le funzioni "Pro" gratis e va
 | Strumento | Uso | Note |
 |---|---|---|
 | Node.js ≥ 18 | `tests/run_core.js`, `build.mjs` | serve `DecompressionStream` (3MF) |
-| Python ≥ 3.10 | `tests/make_samples.py`, `tests/check_step.py` | `pip install numpy trimesh manifold3d cadquery-ocp networkx lxml` (OCP = OpenCASCADE, ~100 MB) |
+| Python ≥ 3.10 | `tests/make_samples.py`, `tests/check_step.py` | `pip install numpy trimesh manifold3d cadquery-ocp networkx lxml` (OCP = OpenCASCADE, ~100 MB); facoltativo `pymupdf` per vedere i PDF come immagini |
 | .NET 8 SDK | solo per l'exe Windows | `desktop\build-desktop.ps1` (Windows) o `desktop/build-desktop.sh` |
 | Browser | prova dell'interfaccia | servire la cartella via HTTP: `python -m http.server 8000` (il Worker e il service worker non partono da `file://`; la build in `dist/` invece sì) |
 | Playwright (facoltativo) | test end-to-end della UI | `npm i playwright` in una cartella di lavoro **fuori dal repo** |
@@ -36,6 +36,7 @@ Replica clean-room di mesh2solid.thavision.com con le funzioni "Pro" gratis e va
 Comandi in PowerShell dalla radice del repo:
 ```powershell
 python tests\make_samples.py; node tests\run_core.js; python tests\check_step.py
+node tests\test_repair.js; node tests\test_pdf.js
 node build.mjs
 .\desktop\build-desktop.ps1
 python -m http.server 8000   # poi http://localhost:8000
@@ -44,7 +45,7 @@ python -m http.server 8000   # poi http://localhost:8000
 ## 4. Mappa del codice
 | File | Contenuto |
 |---|---|
-| `src/core.js` | Motore senza DOM (IIFE, esporta `M2S` in Worker e `module.exports` in Node). Sezioni: **1. Parsing** (`parseSTL`, `parseOBJ`, `parse3MF` con `unzip`/`inflateRaw`, `parseFile`) · **2. Topologia** (`buildMesh`: saldatura, normali, spigoli `E0/E1/ET`, vicini `nb`, componenti `comp`, nomi corpi) · **3. Fitting** (`fitPlane`, `fitCircle2D`, `axisFromNormals`, `fitCylinder`, `fitSphere`) · **4. Riconoscimento** (`segment`, stadi 4-00 → 4f, vedi sotto) · **3-bis. Primitive/utilità** (`fitCone`, `coneDist`, `fitTorus`, `torusDist`, `cylErr`, `ISO_METRIC`, `detectThread`, `fitBSpline`, `fillHoles`, `regionStats`, `editRegions`, `features`, `surfDist`, `deviation`) · **5. Export** (`stepNum`, `exportSTEP`) · `analyse` |
+| `src/core.js` | Motore senza DOM (IIFE, esporta `M2S` in Worker e `module.exports` in Node). Sezioni: **1. Parsing** (`parseSTL`, `parseOBJ`, `parse3MF` con `unzip`/`inflateRaw`, `parseFile`) · **2. Topologia** (`buildMesh`: saldatura, normali, spigoli `E0/E1/ET`, vicini `nb`, componenti `comp`, nomi corpi) · **3. Fitting** (`fitPlane`, `fitCircle2D`, `axisFromNormals`, `fitCylinder`, `fitSphere`) · **4. Riconoscimento** (`segment`, stadi 4-00 → 4f, vedi sotto) · **3-bis. Primitive/utilità** (`fitCone`, `coneDist`, `fitTorus`, `torusDist`, `cylErr`, `ISO_METRIC`, `detectThread`, `fitBSpline`, `fillHoles`, `fixNonManifold`, `threadsToCylinders`, `reportPdf`, `regionStats`, `editRegions`, `features`, `surfDist`, `deviation`) · **5. Export** (`stepNum`, `exportSTEP`) · `analyse` |
 | `src/worker.js` | Protocollo `load / repair / analyse / edit / undo / step / stl / obj`; riassunti serializzabili delle regioni; cronologia per Annulla |
 | `src/app.js` | UI: dizionario `DICT` IT/EN, tema, viewer three.js, picking/selezione, tabelle, corpi, editing, export, CSV, integrazione (`postMessage`, `?url=`, `launchQueue`, service worker) |
 | `index.html` | Layout e CSS (token colore in `:root` e `[data-theme="light"]`), import map verso `vendor/` |
@@ -57,8 +58,8 @@ python -m http.server 8000   # poi http://localhost:8000
 | `.github/workflows/` | `ci.yml` (test + build), `desktop.yml` (exe; release sui tag `v*`) |
 
 **Ordine degli stadi in `segment`** (l'ordine è voluto, vedi §7):
-4-00 filettature → 4-0 B-spline (patch lisce) → 4a-bis sfere → 4a-quater tori → 4a-ter coni → 4a cilindri →
-4b piani → 4c freeform → 4d macchie freeform (filetto/toro/B-spline) → 4e fusione → 4f snap.
+4-00 filettature (esclude i triangoli ⟂ asse) → 4-0 B-spline (patch lisce) → 4a-bis sfere → 4a-quater tori → 4a-ter coni → 4a cilindri →
+4b piani → 4c freeform → 4d macchie freeform (filetto/toro/B-spline) → **4e-0 residui del filetto** → 4e fusione → 4f snap.
 
 **Opzioni di `segment`**: `{ tol, angle, cylinders, spheres, cones, tori, threads, nurbs, snap }`
 (`cones/tori/threads/nurbs` attivi se non `false`; `cylinders/spheres` vanno passati `true`; `snap` opzionale).
@@ -86,6 +87,8 @@ python -m http.server 8000   # poi http://localhost:8000
 python3 tests/make_samples.py      # rigenera le mesh di prova (trimesh + manifold3d)
 node tests/run_core.js             # analisi + export STEP in tests/out
 python3 tests/check_step.py        # validazione con OpenCASCADE (OCP): tutti valid=True
+node tests/test_repair.js          # riparazione non-manifold (exit 1 se fallisce)
+node tests/test_pdf.js             # report PDF: struttura e conteggio fori
 node build.mjs                     # build single-file in dist/
 ```
 Per l'interfaccia: prova nel browser caricamento, analisi, selezione, modifica/annulla, tutti gli export.
@@ -121,8 +124,10 @@ Per l'interfaccia: prova nel browser caricamento, analisi, selezione, modifica/a
 | bump | 5 piani + 1 B-spline | 8799,84 |
 | shaft | 7 piani + 1 cilindro | 21924,78 |
 | named_parts | 2 solidi "Piastra", "Perno" | 11717,26 |
-| bolt_m6 | filettatura M6 destra (sfaccettata) + testa | ~756 |
-| torus | toro completo → sfaccettato (2304 piani) | 9729,41 |
+| bolt_m6 | 3 piani + 1 cilindro + 1 filettatura M6 destra (sfaccettata) | ~756 |
+| torus | toro completo → **2 facce toroidali** | 9869,60 (esatto) |
+| sphere_full | sfera completa → **2 facce sferiche** | 4188,79 (esatto) |
+| bolt_m6_threadcyl | filetto → cilindro nominale: 3 piani + 2 cilindri | ~820,6 |
 | open_block | superficie aperta, 0 solidi | — |
 Tutti devono essere `valid=True`; `check_step.py` esce con codice 1 altrimenti.
 
@@ -141,12 +146,11 @@ Tutti devono essere `valid=True`; `check_step.py` esce con codice 1 altrimenti.
 - **Timestamp**: usare l'ora reale (`Get-Date` / `date`), mai orari stimati.
 
 ## 8. Prossimi passi (in ordine di priorità)
+Fatti il 2026-10-07 (v1.4.0): filettature→cilindro nominale, sfere spurie, sfera/toro completi, riparazione non-manifold, report PDF, deviazione B-spline per triangolo.
 1. **Provare l'exe Windows** (Actions → *desktop* → *Run workflow*, oppure `desktop\build-desktop.ps1`): avvio,
-   apertura file da argomento/trascinamento, download STEP dentro WebView2. Correggere `Program.cs` se serve.
-2. **Controllare l'esito di `ci.yml`** sulla scheda Actions e sistemare eventuali differenze Linux/GitHub (versioni pip).
-3. Filettature: sostituire la zona filettata con il cilindro nominale quando confina con piani ⟂ asse.
-4. Ridurre le sfere spurie nelle zone di uscita del filetto (`bolt_m6`: 8 piccole sfere).
-5. Toro/sfera completi divisi in due facce invece che sfaccettati.
-6. Riparazione di spigoli non-manifold e auto-intersezioni.
-7. Pulsante "Converti in STEP" in 3D STL Multipart Maker (repo `3d-stl-multipart-maker`) che apre Mesh2STEP via `postMessage` (API in `MANUAL.md` §9).
-8. Report PDF con disegno quotato dei fori.
+   apertura file da argomento/trascinamento, download STEP dentro WebView2. Correggere `Program.cs` se serve. (Serve un PC Windows.)
+2. **Controllare l'esito di `ci.yml`** dopo il push della 1.4.0.
+3. Pulsante "Converti in STEP" in 3D STL Multipart Maker (repo `3d-stl-multipart-maker`) che apre Mesh2STEP via `postMessage` (API in `MANUAL.md` §9) — altro repository.
+4. Auto-intersezioni: rilevamento e riparazione.
+5. B-spline per superfici che si richiudono; deviazione per freeform e filettature.
+6. Report PDF su più pagine (oltre ~28 fori le righe vengono troncate con «… (+n)»).

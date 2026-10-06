@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — app.js
- * Versione: 1.3.2 — 2026-10-06 21:45 (Europe/Rome)
+ * Versione: 1.4.0 — 2026-10-07 00:23 (Europe/Rome)
  * Versione precedente archiviata: archive/app_v1.0.1_20261006-1310.js
  * (2026-10-06: riscritta per editing facce, corpi, report CSV, export STL/OBJ, heatmap deviazione,
  *  viste, IT/EN, tema chiaro, condivisione, PWA e API di integrazione).
@@ -10,7 +10,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const VERSION = '1.3.2';
+const VERSION = '1.4.0';
 const $ = id => document.getElementById(id);
 const store = { get: k => { try { return localStorage.getItem('m2s.' + k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem('m2s.' + k, v); } catch { /* storage non disponibile */ } } };
 
@@ -31,7 +31,8 @@ const DICT = {
     reading: 'Lettura di {f}…', loaded: 'Mesh caricata.', open_warn: 'Mesh aperta: usa «Chiudi i buchi» oppure lo STEP sarà una superficie.', analysing: 'Riconoscimento superfici…',
     done: 'Analisi completata in {s} s.', many_free: ' Molte zone freeform: prova ad aumentare la tolleranza.', step_gen: 'Generazione STEP…',
     step_ok: 'STEP salvato: {f} facce ({c} spigoli circolari, {l} rettilinei), {s} solido/i.', step_surf: 'STEP salvato: {f} facce, superficie aperta.',
-    repaired: 'Chiusi {h} buchi con {a} triangoli.', no_holes: 'Nessun buco da chiudere.', err: 'Errore: ',
+    pdf: 'Report PDF', o_thrcyl: 'Filettature come cilindro nominale (STEP)', pdf_title: 'Report fori', pdf_file: 'File', pdf_size: 'Ingombro', pdf_view: 'vista asse', pdf_type: 'Tipo', pdf_axis: 'Asse', pdf_none: 'Nessun foro', pdf_thread: 'Filetto', pdf_len: 'Lunghezza', pdf_hand: 'Senso', pdf_internal: 'interna', pdf_external: 'esterna', pdf_right: 'destra', pdf_left: 'sinistra', pdf_count: 'n.', pdf_footer: 'misure in mm; X/Y dall\'angolo in basso a sinistra della vista',
+    repaired: 'Chiusi {h} buchi con {a} triangoli.', repaired_nm: 'Rimossi {n} triangoli non-manifold (duplicati/alette); chiusi {h} buchi con {a} triangoli.', no_holes: 'Nessun buco da chiudere.', err: 'Errore: ',
     'err.notConnected': 'le facce selezionate non sono contigue', 'err.fit': 'nessuna superficie entro lo scarto richiesto (migliore: {b} mm)', 'err.noUndo': 'niente da annullare', 'err.empty': 'nessuna faccia selezionata',
     sel_n: '{n} facce selezionate ({t} triangoli)', edited: 'Modifica applicata.', undone: 'Modifica annullata.',
     k_type: 'Tipo', k_tris: 'Triangoli', k_area: 'Area', k_dia: 'Diametro', k_len: 'Lunghezza', k_axis: 'Asse', k_err: 'Scarto max', k_rad: 'Raggio', k_center: 'Centro', k_normal: 'Normale',
@@ -56,7 +57,8 @@ const DICT = {
     reading: 'Reading {f}…', loaded: 'Mesh loaded.', open_warn: 'Open mesh: use "Close mesh holes" or the STEP will be a surface.', analysing: 'Recognising surfaces…',
     done: 'Analysis done in {s} s.', many_free: ' Many freeform areas: try a larger tolerance.', step_gen: 'Generating STEP…',
     step_ok: 'STEP saved: {f} faces ({c} circular, {l} straight edges), {s} solid(s).', step_surf: 'STEP saved: {f} faces, open surface.',
-    repaired: 'Closed {h} holes with {a} triangles.', no_holes: 'No holes to close.', err: 'Error: ',
+    pdf: 'PDF report', o_thrcyl: 'Threads as nominal cylinder (STEP)', pdf_title: 'Hole report', pdf_file: 'File', pdf_size: 'Overall size', pdf_view: 'view axis', pdf_type: 'Type', pdf_axis: 'Axis', pdf_none: 'No holes', pdf_thread: 'Thread', pdf_len: 'Length', pdf_hand: 'Hand', pdf_internal: 'internal', pdf_external: 'external', pdf_right: 'right', pdf_left: 'left', pdf_count: 'no.', pdf_footer: 'dimensions in mm; X/Y from the lower-left corner of the view',
+    repaired: 'Closed {h} holes with {a} triangles.', repaired_nm: 'Removed {n} non-manifold triangles (duplicates/fins); closed {h} holes with {a} triangles.', no_holes: 'No holes to close.', err: 'Error: ',
     'err.notConnected': 'the selected faces are not contiguous', 'err.fit': 'no surface within the requested deviation (best: {b} mm)', 'err.noUndo': 'nothing to undo', 'err.empty': 'no face selected',
     sel_n: '{n} faces selected ({t} triangles)', edited: 'Edit applied.', undone: 'Edit undone.',
     k_type: 'Type', k_tris: 'Triangles', k_area: 'Area', k_dia: 'Diameter', k_len: 'Length', k_axis: 'Axis', k_err: 'Max deviation', k_rad: 'Radius', k_center: 'Centre', k_normal: 'Normal',
@@ -236,7 +238,7 @@ function showInfo() {
     [t('f_volume'), closed ? fmt(Math.abs(info.volume) / 1000, 2) + ' cm³' : '—'],
   ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
   $('meshinfo').hidden = false;
-  $('repair').hidden = info.open === 0;
+  $('repair').hidden = info.open === 0 && info.nonManifold === 0;   // [v1.4.0] prima: solo info.open === 0
 }
 function onMesh(r) {
   info = r.info; res = null; sel.clear();
@@ -268,7 +270,7 @@ $('repair').onclick = async () => {
   try {
     busy(true);
     const r = await call({ cmd: 'repair' });
-    onMesh(r); status(r.holes ? t('repaired', { h: r.holes, a: r.added }) : t('no_holes'));
+    onMesh(r); status(r.removed ? t('repaired_nm', { n: r.removed, h: r.holes, a: r.added }) : r.holes ? t('repaired', { h: r.holes, a: r.added }) : t('no_holes'));
     await analyse();
   } catch (e) { status(t('err') + errText(e), 'err'); } finally { busy(false); }
 };
@@ -344,7 +346,7 @@ function download(data, name, type) {
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 async function makeStep() {
-  const r = await call({ cmd: 'step', opts: { tol: analysedTol, bodies: bodyCfg } });
+  const r = await call({ cmd: 'step', opts: { tol: analysedTol, bodies: bodyCfg, threadCyl: $('o_thrcyl').checked } });   // [v1.4.0] threadCyl
   status(r.solids ? t('step_ok', { f: r.faces, c: r.edges.circle, l: r.edges.line, s: r.solids }) : t('step_surf', { f: r.faces }));
   return r;
 }
@@ -371,6 +373,16 @@ $('csv').onclick = () => {
     if (r.type === 'cone') rows.push(['cone', '', '', '', ...r.axis.map(n), ...r.apex.map(n), `${n(r.alpha * 360 / Math.PI)}°`].join(sep));
   }
   download('﻿' + rows.join('\r\n') + '\r\n', (fileName.replace(/\.[^.]+$/, '') || 'mesh') + '_report.csv', 'text/csv');
+};
+
+// report PDF con disegno quotato dei fori (generato nel worker, nessun upload)
+$('pdf').onclick = async () => {
+  try {
+    busy(true);
+    const L = { title: t('pdf_title'), file: t('pdf_file'), size: t('pdf_size'), view: t('pdf_view'), holes: t('h_holes'), type: t('pdf_type'), depth: t('h_depth'), axis: t('pdf_axis'), through: t('through'), blind: t('blind'), none: t('pdf_none'), threads: t('h_threads'), thread: t('pdf_thread'), pitch: t('k_pitch'), len: t('pdf_len'), hand: t('pdf_hand'), internal: t('pdf_internal'), external: t('pdf_external'), right: t('pdf_right'), left: t('pdf_left'), shafts: t('shafts'), count: t('pdf_count'), footer: t('pdf_footer') };
+    const r = await call({ cmd: 'pdf', L, lang });
+    download(r.buf, r.name + '_report.pdf', 'application/pdf');
+  } catch (e) { status(t('err') + errText(e), 'err'); } finally { busy(false); }
 };
 
 // ============================ Integrazione e PWA ============================

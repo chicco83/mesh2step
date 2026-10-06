@@ -1,5 +1,5 @@
 // Mesh2STEP — tests/run_core.js
-// Versione: 1.1.0 — 2026-10-06 13:20
+// Versione: 1.4.0 — 2026-10-07 00:23
 // Esegue il core in Node su ogni file di tests/samples e scrive gli STEP in tests/out.
 // Uso: node tests/run_core.js [cartella_input] [cartella_output] [tol]
 const fs = require('fs'), path = require('path');
@@ -19,6 +19,8 @@ fs.mkdirSync(outDir, { recursive: true });
     const feat = M2S.features(M, seg);
     const st = M2S.exportSTEP(M, seg, { name: path.parse(f).name, tol });
     fs.writeFileSync(path.join(outDir, path.parse(f).name + '.step'), st.text);
+    // [v1.4.0] variante con filettature sostituite dal cilindro nominale -> <nome>_threadcyl.step
+    if (seg.regions.some(r => r.type === 'thread')) fs.writeFileSync(path.join(outDir, path.parse(f).name + '_threadcyl.step'), M2S.exportSTEP(M, seg, { name: path.parse(f).name, tol, threadCyl: true }).text);
     // [v1.1.0] mesh aperte: chiude i buchi ed esporta anche <nome>_riparata.step
     if (M.open > 0) {
       const R = M2S.fillHoles(M), M2 = M2S.buildMesh(R.soup), s2 = M2S.segment(M2, { tol, angle: 1, cylinders: true, spheres: true });

@@ -1,5 +1,23 @@
 # CHANGELOG — Mesh2STEP
-Versione documento: 1.3.2 — 2026-10-06 21:46
+Versione documento: 1.4.0 — 2026-10-07 00:23
+
+## 10. [1.4.0] — 2026-10-07 00:23 — Filettature, sfere/tori, non-manifold, PDF, deviazione
+- **Filettature → cilindro nominale** (opzione *Filettature come cilindro nominale (STEP)*, default **spenta**): i vertici del filetto
+  sono proiettati radialmente sul raggio nominale (esterno: Ø ISO o cresta; interno: fondo del foro) su una **copia** della mesh;
+  le regioni vicine toccate diventano sfaccettate tranne i piani ⟂ asse. `bolt_m6_threadcyl.step`: 3 piani + 2 cilindri, `valid=True`, volume 820,58.
+- **Residui del filetto**: il pre-passo 4-00 inglobava i triangoli ⟂ asse del tappo (39 tri a z=18) → ora esclusi; nuovo stadio 4e-0
+  assorbe nel filetto le piccole regioni (sfere/coni/tori/freeform/piani inclinati < 100 tri) adiacenti e dentro la sua fascia.
+  `bolt_m6`: da 15 piani + 8 sfere + 11 freeform a **3 piani + 1 cilindro + 1 filetto**.
+- **Sfera e toro completi** → due facce analitiche (emisferi / semi-tubi) invece di migliaia di triangoli:
+  `torus.step` = 2 `TOROIDAL_SURFACE`, volume 9869,60 (esatto, prima 9729,41); nuovo campione `sphere_full.stl` = 2 `SPHERICAL_SURFACE`, volume 4188,79 (esatto).
+- **Riparazione non-manifold** (`fixNonManifold`): duplicati e coppie schiena-a-schiena, alette su spigoli con >2 triangoli;
+  il pulsante *Ripara* compare anche con spigoli non-manifold. Test: `tests/test_repair.js`. **Auto-intersezioni: non trattate.**
+- **Report PDF** con disegno quotato dei fori (vista lungo l'asse dei fori più frequente, fori numerati, quote d'ingombro, tabelle
+  fori/filettature/alberi), scritto a mano senza librerie. Test: `tests/test_pdf.js`.
+- **Deviazione B-spline per triangolo** (scarto verticale dei vertici dalla superficie) al posto del solo massimo della regione.
+- Il comando `step` del worker accetta `threadCyl`; nuovo comando `pdf`.
+- Console "An unknown error occurred when fetching the script": viene dalla registrazione del service worker nel **browser integrato** di Claude Code (`navigator.serviceWorker.register('sw.js')` fallisce lì anche con `sw.js` servito 200); l'app la ignora (`.catch`) e funziona. Non riprodotto/verificato in Chrome normale: da controllare lì se il PWA offline serve.
+- Rollback: `git revert` del commit di questa versione; l'opzione filettature è spenta di default, quindi l'export STEP standard non cambia per le filettature.
 
 ## 9. [1.3.2] — 2026-10-06 21:46 — Deviazione B-spline e colore di selezione (tema chiaro)
 - Mappa di deviazione: le regioni B-spline risultavano sempre a 0 (`devTri` non veniva mai impostato) e quindi tutte verdi.

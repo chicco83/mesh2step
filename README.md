@@ -1,5 +1,5 @@
 # Mesh2STEP
-Versione: 1.3.0 — 2026-10-06 14:10
+Versione: 1.4.0 — 2026-10-07 00:23
 <!-- [2026-10-06 13:45] Versione precedente 1.0.1 (2026-10-06 13:10): README delle funzioni v1.0
      (piani, cilindri, sfere); aggiornato con tutte le funzioni v1.1–v1.3. -->
 
@@ -42,6 +42,7 @@ Gira interamente nel browser, anche offline: **i file non vengono caricati da ne
 | **Topologia** | Adiacenze, bordi aperti, spigoli non-manifold, corpi separati |
 | **Misure** | Triangoli, dimensioni, volume, area |
 | **Chiudi i buchi** | Ear clipping sul piano medio; anelli complanari annidati chiusi come **poligoni con fori** (es. faccia superiore con fori) |
+| **Ripara non-manifold** | Duplicati, coppie schiena-a-schiena, alette su spigoli con >2 triangoli (poi chiude i buchi). Le auto-intersezioni non sono trattate |
 
 ### Riconoscimento superfici
 | Superficie | Metodo | Dati |
@@ -86,6 +87,8 @@ raggi di toro, cilindri coassiali sulla stessa retta — ogni modifica solo se l
 | **Tabella fori** | Per Ø, **passante/cieco**, profondità (fondo piano o punta conica) |
 | **Alberi/raccordi** e **filettature** | Tabelle dedicate |
 | **Report CSV** | Fori, alberi, coni, filettature con asse e posizione; formato Excel italiano (`;`, virgola) |
+| **Report PDF** | Disegno quotato (vista lungo l'asse dei fori, fori numerati passanti/ciechi, ingombro) + tabelle fori, filettature, alberi; generato nel browser |
+| **Deviazione** | Mappa a colori mesh ↔ superficie; per le B-spline per triangolo |
 
 ### Export
 | Formato | Dettagli |
@@ -94,6 +97,8 @@ raggi di toro, cilindri coassiali sulla stessa retta — ogni modifica solo se l
 | **STL** | Binario, anche della mesh riparata |
 | **OBJ** | Un gruppo per faccia riconosciuta |
 | **Condividi STEP** | Web Share API (telefono) |
+| **Filettature come cilindro nominale** | Opzione dell'export STEP (spenta di default): il filetto diventa un cilindro al Ø nominale |
+| **Sfera/toro completi** | Esportati come 2 facce analitiche (emisferi / semi-tubi) |
 
 ### Piattaforma
 | Funzione | Dettagli |
@@ -142,7 +147,8 @@ STEP generati e riletti con **OpenCASCADE** (kernel di FreeCAD), tutti `valid=Tr
 | Piastra 40×30×10 con foro Ø10 (STL e 3MF) | 272 | 6 piani + 1 cilindro | 11214,6018 mm³ (esatto) |
 | Svasatura 90° su foro Ø6 | 400 | 6 piani + 1 cilindro + 1 cono 45,00° | 15604,1593 mm³ (esatto) |
 | Albero tornito: raccordo R3 + smusso | 4 032 | 3 piani + 2 cilindri + 1 cono + 1 toro R9/r3 | 6848,98 mm³ |
-| Vite M6×1 su testa Ø10 | 54 972 | filettatura **M6** destra + testa | 756,24 mm³ |
+| Vite M6×1 su testa Ø10 | 54 972 | 3 piani + 1 cilindro + filettatura **M6** destra (con l'opzione: 3 piani + 2 cilindri) | 756,24 mm³ (820,58 con cilindro nominale) |
+| Sfera R10 / toro R20-r5 completi | 2 048 / 2 304 | 2 facce sferiche / 2 facce toroidali | 4188,79 / 9869,60 mm³ (esatti) |
 | Piastra con bombatura liscia | 6 912 | 5 piani + 1 B-spline | 8799,84 mm³ |
 | Blocco 2 fori Ø6 + tasca | 420 | 11 piani + 2 cilindri passanti | 32351,77 mm³ |
 | Stesso blocco aperto → *Chiudi i buchi* | 310 | 11 piani + 2 cilindri | 32351,77 mm³ |
@@ -161,27 +167,29 @@ vendor/               three.js 0.169 + OrbitControls (MIT)
 build.mjs             build single-file offline in dist/
 dist/                 mesh2step_v<versione>_<AAAAMMGG-HHMM>.html
 desktop/              app Windows WebView2 (C#/.NET 8) + build-desktop.ps1 / .sh
-tests/                make_samples.py · run_core.js · check_step.py · samples/
+tests/                make_samples.py · run_core.js · check_step.py · test_repair.js · test_pdf.js · samples/
 archive/              versioni precedenti dei file riscritti
 .github/workflows/    ci.yml · desktop.yml
 ```
 
 ## Sviluppo e test
 ```bash
-pip install trimesh manifold3d cadquery-ocp
+pip install numpy trimesh manifold3d cadquery-ocp networkx lxml
 python3 tests/make_samples.py     # mesh di prova (manifold3d)
 node tests/run_core.js            # analisi + STEP in tests/out (+ *_riparata.step per mesh aperte)
 python3 tests/check_step.py       # validazione OpenCASCADE (exit 1 se uno STEP non è valido)
+node tests/test_repair.js         # riparazione non-manifold
+node tests/test_pdf.js            # report PDF
 node build.mjs                    # build portabile
 desktop/build-desktop.sh          # exe Windows (serve .NET 8 SDK); da PowerShell: .\desktop\build-desktop.ps1
 ```
 Regole di versioning, documentazione e git: [CLAUDE.md](CLAUDE.md).
 
 ## Limiti noti
-- Filettature esportate sfaccettate (con nome `THREAD M…`), non sostituite dal cilindro nominale.
+- Filettature: di default esportate sfaccettate (faccia `THREAD M…`); il cilindro nominale è un'opzione.
 - B-spline solo per zone tipo "campo di altezze"; superfici organiche che si richiudono restano sfaccettate.
-- Sfera o toro completi (senza bordi) esportati sfaccettati.
-- Riparazione: solo buchi, non spigoli non-manifold o auto-intersezioni.
+- Riparazione: buchi e spigoli non-manifold; **non** le auto-intersezioni.
+- Report PDF: una sola pagina (righe oltre ~28 troncate).
 - App Windows compilata ma non ancora provata su Windows.
 
 Stato di tutte le migliorie: [IMPROVEMENTS.md](IMPROVEMENTS.md).

@@ -1,5 +1,5 @@
 # MANUALE — Mesh2STEP
-Versione documento: 1.3.0 — 2026-10-06 14:10
+Versione documento: 1.4.0 — 2026-10-07 00:23
 <!-- [2026-10-06 13:45] versione precedente 1.0.0 (2026-10-05 17:10) nel repository git (commit 729f9ed). -->
 
 ## 1. Avvio
@@ -35,11 +35,13 @@ Versione documento: 1.3.0 — 2026-10-06 14:10
 | Verde acqua | Cilindro | `CYLINDRICAL_SURFACE` (faccia `HOLE D…` / `SHAFT D…`) |
 | Azzurro | Cono | `CONICAL_SURFACE` |
 | Arancio | Sfera | `SPHERICAL_SURFACE` |
-| Giallo | Toro | `TOROIDAL_SURFACE` |
+| Giallo | Toro | `TOROIDAL_SURFACE` (completo: 2 facce) |
 | Rosa | Filettatura | triangoli piani, facce `THREAD M…` |
 | Verde chiaro | B-spline | `B_SPLINE_SURFACE_WITH_KNOTS` |
 | Viola | Freeform | triangoli piani |
-| Giallo acceso | Selezione | — |
+| Bianco (tema scuro) / blu (tema chiaro) | Selezione | — |
+
+Il colore dipende **solo dal tipo** di superficie (dalla 1.3.1): facce vicine dello stesso tipo hanno lo stesso colore; i confini si vedono con il pulsante *Contorni*.
 
 **Deviazione**: verde = 0, giallo = metà tolleranza, rosso ≥ tolleranza; la legenda mostra la deviazione massima.
 
@@ -57,10 +59,19 @@ Versione documento: 1.3.0 — 2026-10-06 14:10
 - Compare con più corpi o con nomi presi dal file (3MF `name`, OBJ `o`/`g`, STL ASCII `solid`).
 - Spunta = incluso nello STEP; il nome diventa quello del solido nel CAD.
 
-## 7. Report CSV
+## 7. Report CSV e PDF
 Colonne: tipo, diametro, profondità, passante, asse (x,y,z), posizione (x,y,z), note.
 Righe: `hole`, `shaft`, `cone` (angolo incluso), `thread` (M-size, passo, senso, interna/esterna).
 In italiano: separatore `;` e virgola decimale (apertura diretta in Excel).
+
+**Report PDF** (pulsante *Report PDF*): una pagina con il disegno del contorno visto lungo l'asse dei fori più frequente,
+fori numerati (cerchio continuo = passante, tratteggiato = cieco), quote d'ingombro e le tabelle fori (Ø, tipo, profondità, X/Y
+dall'angolo in basso a sinistra della vista, asse), filettature e alberi. Fori con altro asse sono in tabella senza X/Y.
+
+**Export STEP — Filettature come cilindro nominale**: se attiva, le filettature riconosciute diventano un cilindro (esterno: Ø
+nominale ISO; interno: fondo del foro) con nome faccia `THREAD Mx`. Il volume cambia rispetto alla mesh filettata.
+
+**Ripara**: compare con buchi o spigoli non-manifold; rimuove duplicati/alette, poi chiude i buchi.
 
 ## 8. Navigazione e interfaccia
 Trascina = ruota · rotella/pizzica = zoom · tasto destro o Shift+trascina = sposta · **F** = adatta.
@@ -97,8 +108,9 @@ archive/         versioni precedenti dei file riscritti
 ```
 ### Test
 ```bash
-pip install trimesh manifold3d cadquery-ocp
+pip install numpy trimesh manifold3d cadquery-ocp networkx lxml
 python3 tests/make_samples.py && node tests/run_core.js && python3 tests/check_step.py
+node tests/test_repair.js && node tests/test_pdf.js
 SNAP=1 node tests/run_core.js tests/samples /tmp/out   # stessa cosa con snap ai valori nominali
 ```
 ### App Windows

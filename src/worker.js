@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — worker.js
- * Versione: 1.3.0 — 2026-10-06 13:40 (Europe/Rome)
+ * Versione: 1.4.0 — 2026-10-07 00:23 (Europe/Rome)
  * Versione precedente archiviata in archive/worker_v1.0.0_20261005-1710.js (2026-10-06: riscrittura
  * per editing, riparazione, export STL/OBJ, deviazione, corpi).
  *
@@ -11,7 +11,8 @@
  *   analyse {opts}                 -> risultato analisi (vedi result())
  *   edit    {ids, as, maxErr}      -> risultato analisi aggiornato      (unione/conversione facce)
  *   undo    {}                     -> risultato analisi precedente
- *   step    {opts:{tol, bodies}}   -> {text, ...}
+ *   step    {opts:{tol, bodies, threadCyl}}   -> {text, ...}
+ *   pdf     {L, lang}              -> {buf: PDF}  [v1.4.0]
  *   stl     {}                     -> {buf}   STL binario della mesh corrente
  *   obj     {}                     -> {text}  OBJ con un gruppo per faccia riconosciuta
  */
@@ -76,10 +77,13 @@ self.onmessage = async ({ data }) => {
       const { pos, info } = meshPayload();
       reply({ positions: pos, info }, [pos.buffer]);
     } else if (cmd === 'repair') {
+      // [v1.4.0] prima: solo const r = M2S.fillHoles(M);  ora prima si tolgono duplicati e alette non-manifold
+      const fx = M.nonManifold > 0 ? M2S.fixNonManifold(M) : { removed: 0 };
+      if (fx.removed) M = M2S.buildMesh(fx.soup);
       const r = M2S.fillHoles(M);
       M = M2S.buildMesh(r.soup); seg = null; history.length = 0;
       const { pos, info } = meshPayload();
-      reply({ positions: pos, info, holes: r.holes, added: r.added }, [pos.buffer]);
+      reply({ positions: pos, info, holes: r.holes, added: r.added, removed: fx.removed }, [pos.buffer]);
     } else if (cmd === 'analyse') {
       const t0 = performance.now();
       lastOpts = data.opts; seg = M2S.segment(M, data.opts); history.length = 0;
@@ -97,8 +101,11 @@ self.onmessage = async ({ data }) => {
       const { msg, transfer } = result({ canUndo: history.length > 0 });
       reply(msg, transfer);
     } else if (cmd === 'step') {
-      const r = M2S.exportSTEP(M, seg, { name: lastName, tol: data.opts.tol, bodies: data.opts.bodies });
+      const r = M2S.exportSTEP(M, seg, { name: lastName, tol: data.opts.tol, bodies: data.opts.bodies, threadCyl: data.opts.threadCyl });
       reply({ text: r.text, faces: r.faces, edges: r.edges, solids: r.solids, surfaces: r.surfaces, name: lastName });
+    } else if (cmd === 'pdf') {   // [v1.4.0] report PDF con disegno quotato dei fori
+      const r = M2S.reportPdf(M, seg, { name: lastName, L: data.L, lang: data.lang });
+      reply({ buf: r.bytes.buffer, name: lastName }, [r.bytes.buffer]);
     } else if (cmd === 'stl') {
       const buf = new ArrayBuffer(84 + 50 * M.nT), dv = new DataView(buf);
       new Uint8Array(buf).set(new TextEncoder().encode('Mesh2STEP ' + lastName).slice(0, 80));

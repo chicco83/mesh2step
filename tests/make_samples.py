@@ -1,5 +1,5 @@
 # Mesh2STEP — tests/make_samples.py
-# Versione: 1.1.0 — 2026-10-06 13:20
+# Versione: 1.4.0 — 2026-10-07 00:23
 # Genera mesh di prova (STL) con geometria nota tramite manifold3d (booleane robuste).
 import sys, os
 import numpy as np
@@ -40,6 +40,8 @@ rr = Manifold.batch_hull(cyls) - Manifold.cylinder(20, 4, 4, 48).translate([25, 
 save(rr, 'rounded_plate.stl')
 
 # 6) Toro (non supportato in v1 -> freeform sfaccettato) in OBJ; piastra in 3MF; mesh aperta
+# [v1.4.0 2026-10-07] sfera completa (nessun bordo): deve diventare 2 emisferi analitici nello STEP
+save(Manifold.sphere(10, 64), 'sphere_full.stl')
 tor = trimesh.creation.torus(major_radius=20, minor_radius=5, major_sections=48, minor_sections=24)
 tor.export(os.path.join(out, 'torus.obj')); print('torus.obj', len(tor.faces))
 pm = plate.to_mesh(); trimesh.Trimesh(pm.vert_properties[:, :3], pm.tri_verts).export(os.path.join(out, 'plate_hole_3mf.3mf')); print('plate_hole_3mf.3mf')

@@ -1,7 +1,7 @@
 <!doctype html>
 <!--
   Mesh2STEP — index.html
-  Versione: 1.3.2 — 2026-10-06 21:46 (Europe/Rome)
+  Versione: 1.4.0 — 2026-10-07 00:23 (Europe/Rome)
   Versione precedente archiviata: archive/index_v1.0.1_20261006-1310.html
   (2026-10-06: nuova UI con editing facce, corpi, report, export STL/OBJ, deviazione, viste, IT/EN,
    tema chiaro, PWA offline con three.js locale in vendor/).
@@ -153,7 +153,10 @@
     <div class="legend" id="legend"></div>
     <div id="holes"></div>
     <div id="threads"></div>
-    <button id="csv" class="ghost" data-i18n="csv">Scarica report CSV</button>
+    <div class="btns">
+      <button id="csv" class="ghost" data-i18n="csv">Scarica report CSV</button>
+      <button id="pdf" class="ghost" data-i18n="pdf">Report PDF</button>
+    </div>
   </section>
 
   <!-- ===== Modifica facce ===== -->
@@ -191,6 +194,7 @@
   <!-- ===== Export ===== -->
   <section>
     <h2 data-i18n="s_export">Export</h2>
+    <label class="chk"><input id="o_thrcyl" type="checkbox"> <span data-i18n="o_thrcyl">Filettature come cilindro nominale (STEP)</span></label>
     <button id="step" class="primary" disabled data-i18n="step">Scarica STEP</button>
     <div class="btns">
       <button id="stl" class="ghost" disabled>STL</button>

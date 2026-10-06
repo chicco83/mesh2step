@@ -1,11 +1,11 @@
 <!doctype html>
 <!--
   Mesh2STEP — index.html
-  Versione: 1.3.2 — 2026-10-06 21:46 (Europe/Rome)
+  Versione: 1.4.0 — 2026-10-07 00:23 (Europe/Rome)
   Versione precedente archiviata: archive/index_v1.0.1_20261006-1310.html
   (2026-10-06: nuova UI con editing facce, corpi, report, export STL/OBJ, deviazione, viste, IT/EN,
    tema chiaro, PWA offline con three.js locale in vendor/).
-  Build portabile single-file 20261006-2346: completamente offline (three.js incorporato).
+  Build portabile single-file 20261007-0024: completamente offline (three.js incorporato).
 -->
 <html lang="it">
 <head>
@@ -146,7 +146,10 @@
     <div class="legend" id="legend"></div>
     <div id="holes"></div>
     <div id="threads"></div>
-    <button id="csv" class="ghost" data-i18n="csv">Scarica report CSV</button>
+    <div class="btns">
+      <button id="csv" class="ghost" data-i18n="csv">Scarica report CSV</button>
+      <button id="pdf" class="ghost" data-i18n="pdf">Report PDF</button>
+    </div>
   </section>
 
   <!-- ===== Modifica facce ===== -->
@@ -184,6 +187,7 @@
   <!-- ===== Export ===== -->
   <section>
     <h2 data-i18n="s_export">Export</h2>
+    <label class="chk"><input id="o_thrcyl" type="checkbox"> <span data-i18n="o_thrcyl">Filettature come cilindro nominale (STEP)</span></label>
     <button id="step" class="primary" disabled data-i18n="step">Scarica STEP</button>
     <div class="btns">
       <button id="stl" class="ghost" disabled>STL</button>
@@ -218,7 +222,7 @@
 
 <script id="worker-src" type="text/plain">/*
  * Mesh2STEP — core.js
- * Versione: 1.3.2 — 2026-10-06 21:45 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
+ * Versione: 1.4.0 — 2026-10-07 00:23 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
  * ---------------------------------------------------------------------------
  * Motore indipendente dalla UI (gira nel Web Worker del browser e in Node per i test).
  *   1. Parsing  : STL (binario/ASCII), OBJ, 3MF (zip letto a mano + DecompressionStream)
@@ -230,7 +234,7 @@
  */
 (function (root) {
   'use strict';
-  const VERSION = '1.3.2';
+  const VERSION = '1.4.0';
 
   // ===================== Helper vettoriali (array [x,y,z]) =====================
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -629,7 +633,9 @@
         const th = detectThread(M, patch, []);
         if (!th) continue;
         // fascia del filetto: triangoli connessi con vertici nel range radiale e assiale del fianco
-        const inBand = t => { for (let k = 0; k < 3; k++) { const d = sub(M.P(M.T[3 * t + k]), th.origin), h = dot(d, th.axis), rho = len(sub(d, mul(th.axis, h))); if (rho < th.rmin - 2 * tol - 0.05 * (th.rmax - th.rmin) || rho > th.rmax + 2 * tol + 0.05 * (th.rmax - th.rmin)) return false; } return true; };
+        let inBand = t => { for (let k = 0; k < 3; k++) { const d = sub(M.P(M.T[3 * t + k]), th.origin), h = dot(d, th.axis), rho = len(sub(d, mul(th.axis, h))); if (rho < th.rmin - 2 * tol - 0.05 * (th.rmax - th.rmin) || rho > th.rmax + 2 * tol + 0.05 * (th.rmax - th.rmin)) return false; } return true; };
+        // [v1.4.0 2026-10-07] i triangoli ⟂ asse (tappi/spalle) non appartengono al filetto: prima venivano inglobati se entro la fascia radiale
+        const notCap = t => Math.abs(dot(Nv(t), th.axis)) <= 0.9986, inBand0 = inBand; inBand = t => notCap(t) && inBand0(t);
         const reg = [], inR = new Uint8Array(nT); const st = patch.filter(inBand);
         for (const t of st) inR[t] = 1;
         while (st.length) { const t = st.pop(); reg.push(t); for (let j = 0; j < 3; j++) { const u = M.nb[3 * t + j]; if (u >= 0 && !inR[u] && face[u] < 0 && inBand(u)) { inR[u] = 1; st.push(u); } } }
@@ -667,7 +673,7 @@
         const T = fitTorus(M, patch); if (T && T.maxErr <= tol) continue;
         const B = fitBSpline(M, patch, tol); if (!B) continue;
         const id = regions.length;
-        regions.push({ id, type: 'bspline', tris: patch, nc: B.nc, cp: B.cp, segs: B.segs, err: B.maxErr, normal: B.normal });
+        regions.push({ id, type: 'bspline', tris: patch, nc: B.nc, cp: B.cp, segs: B.segs, err: B.maxErr, normal: B.normal, dist: B.dist });
         for (const t of patch) face[t] = id;
       }
     }
@@ -998,7 +1004,7 @@
         // B-spline (NURBS non razionale) come campo di altezze
         if (opts.nurbs !== false && tris.length >= 16) {
           const B = fitBSpline(M, tris, tol);
-          if (B) replace(blob, { type: 'bspline', nc: B.nc, cp: B.cp, segs: B.segs, err: B.maxErr, normal: B.normal });
+          if (B) replace(blob, { type: 'bspline', nc: B.nc, cp: B.cp, segs: B.segs, err: B.maxErr, normal: B.normal, dist: B.dist });
         }
       }
     }
@@ -1026,6 +1032,26 @@
       }
     }
     */
+    // ---- 4e-0. [v1.4.0 2026-10-07] RESIDUI ALLE USCITE DEL FILETTO: piccole regioni (sfere/coni/tori/freeform/piani inclinati < 100 triangoli)
+    //      adiacenti a un filetto, dentro la sua fascia radiale e assiale, sono pezzi del filetto non agganciati dal 4-00
+    //      (in bolt_m6 erano 8 sfere spurie + 11 freeform) -> assorbite nella regione 'thread'
+    for (const th of regions.filter(r => r.type === 'thread')) {
+      const hs = verticesOf(M, th.tris).map(p => dot(sub(p, th.origin), th.axis)), h0 = Math.min(...hs) - th.pitch, h1 = Math.max(...hs) + th.pitch;
+      const slack = 2 * tol + 0.05 * (th.rmax - th.rmin);
+      const inThread = r => r.tris.every(t => [0, 1, 2].every(k => { const d = sub(M.P(M.T[3 * t + k]), th.origin), h = dot(d, th.axis), rho = len(sub(d, mul(th.axis, h))); return h >= h0 && h <= h1 && rho >= th.rmin - slack && rho <= th.rmax + slack; }));
+      let grew = true;
+      while (grew) {
+        grew = false;
+        for (const r of regions) {
+          if (r === th || r.type === 'thread' || r.type === 'merged' || (r.type === 'plane' && Math.abs(dot(r.normal, th.axis)) > Math.cos(0.5 * Math.PI / 180)) || r.type === 'bspline' || !r.tris.length || r.tris.length >= 100) continue;   // i piani ⟂ asse (tappi) restano
+          if (!r.tris.some(t => [0, 1, 2].some(j => { const u = M.nb[3 * t + j]; return u >= 0 && face[u] === th.id; }))) continue;
+          if (!inThread(r) || r.tris.some(t => Math.abs(dot(Nv(t), th.axis)) > 0.9986)) continue;   // niente triangoli ⟂ asse (tappi/spalle)
+          for (const t of r.tris) face[t] = th.id;
+          th.tris = th.tris.concat(r.tris); r.type = 'merged'; r.tris = []; grew = true;
+        }
+      }
+    }
+
     // ---- 4e. [2026-10-05 18:00] FUSIONE di regioni adiacenti con la stessa primitiva ----
     // (es. sfera/cilindro spezzati in due semi): stesso asse+raggio, stesso centro+raggio, stesso piano
     {
@@ -1311,13 +1337,76 @@
         const segs = nc - 3, knots = [0, 0, 0, 0]; for (let i = 1; i < segs; i++) knots.push(i); knots.push(segs, segs, segs, segs);
         const grev = [...Array(nc).keys()].map(i => (knots[i + 1] + knots[i + 2] + knots[i + 3]) / 3 / segs);
         const cp = [...Array(nc).keys()].map(i => [...Array(nc).keys()].map(j => add(pl.origin, add(add(mul(e1, u0 + grev[i] * (u1 - u0)), mul(e2, v0 + grev[j] * (v1 - v0))), mul(n, z[i * nc + j])))));
-        return { nc, cp, segs, maxErr: mx, normal: n };
+        // [v1.4.0] scarto verticale (lungo la normale media) di un punto dalla superficie: per la mappa di deviazione per triangolo
+        const dist = p => { const d = sub(p, pl.origin), u = dot(d, e1), v = dot(d, e2), h = dot(d, n), Bu = basis(nc, Math.min(1, Math.max(0, (u - u0) / (u1 - u0)))), Bv = basis(nc, Math.min(1, Math.max(0, (v - v0) / (v1 - v0)))); let s = 0; for (let i = 0; i < nc; i++) if (Bu[i]) for (let j = 0; j < nc; j++) s += Bu[i] * Bv[j] * z[i * nc + j]; return Math.abs(s - h); };
+        return { nc, cp, segs, maxErr: mx, normal: n, dist };
       }
     }
     return null;
   }
 
   // ---- Riparazione: chiude i buchi (anelli di bordo aperti) con ear clipping sul piano medio ----
+  // ---- [v1.4.0 2026-10-07] Riparazione spigoli NON-MANIFOLD ----
+  // 1) triangoli duplicati (stessi 3 vertici) -> ne resta uno; coppie "schiena a schiena" (orientamento opposto) si annullano;
+  // 2) spigoli con >2 triangoli: si tengono i due con percorrenza opposta di area totale maggiore, gli altri (alette) si scartano.
+  // Restituisce la nuova "zuppa" di triangoli (stesso formato di fillHoles) e quanti triangoli sono stati tolti.
+  // Le auto-intersezioni NON sono trattate (richiedono booleane robuste: vedi IMPROVEMENTS.md).
+  function fixNonManifold(M) {
+    const keep = new Uint8Array(M.nT).fill(1), groups = new Map();
+    for (let t = 0; t < M.nT; t++) {
+      const v = [M.T[3 * t], M.T[3 * t + 1], M.T[3 * t + 2]], key = [...v].sort((a, b) => a - b).join('_');
+      const sign = ((v[1] - v[0]) * (v[2] - v[1]) * (v[0] - v[2])) > 0 ? 1 : -1;   // parità della permutazione rispetto all'ordine crescente
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push([t, sign]);
+    }
+    let dup = 0;
+    const dmap = new Map();   // spigolo orientato a>b -> triangoli che lo percorrono in quel verso
+    for (let t = 0; t < M.nT; t++) for (let k = 0; k < 3; k++) { const key = M.T[3 * t + k] + '>' + M.T[3 * t + (k + 1) % 3]; if (!dmap.has(key)) dmap.set(key, []); dmap.get(key).push(t); }
+    // coerenza di un triangolo con i vicini esterni al suo gruppo: +1 per ogni spigolo percorso in verso opposto, -1 se nello stesso verso
+    const coherence = (t, grp) => { let sc = 0; for (let k = 0; k < 3; k++) { const a = M.T[3 * t + k], b = M.T[3 * t + (k + 1) % 3]; for (const u of dmap.get(b + '>' + a) || []) if (!grp.has(u)) sc++; for (const u of dmap.get(a + '>' + b) || []) if (!grp.has(u) && u !== t) sc--; } return sc; };
+    for (const l of groups.values()) {
+      if (l.length < 2) continue;
+      const grp = new Set(l.map(x => x[0])), pos = l.filter(x => x[1] > 0), neg = l.filter(x => x[1] < 0);
+      let survivor = null;
+      if (!neg.length) survivor = pos[0][0]; else if (!pos.length) survivor = neg[0][0];
+      else { const sp = coherence(pos[0][0], grp), sn = coherence(neg[0][0], grp); if (sp > sn) survivor = pos[0][0]; else if (sn > sp) survivor = neg[0][0]; }   // coppia schiena a schiena: resta il triangolo coerente con i vicini; a parità si tolgono entrambi (parete doppia interna)
+      for (const [t] of l) if (t !== survivor) { keep[t] = 0; dup++; }
+    }
+    // spigoli con >2 triangoli tra quelli rimasti
+    let fins = 0;
+    for (let pass = 0; pass < 5; pass++) {
+      const em = new Map();
+      for (let t = 0; t < M.nT; t++) if (keep[t]) for (let k = 0; k < 3; k++) {
+        const a = M.T[3 * t + k], b = M.T[3 * t + (k + 1) % 3], key = a < b ? a * M.nV + b : b * M.nV + a;
+        if (!em.has(key)) em.set(key, []);
+        em.get(key).push([t, a < b ? 1 : -1]);
+      }
+      const closedEdges = t => { let c = 0; for (let k = 0; k < 3; k++) { const a = M.T[3 * t + k], b = M.T[3 * t + (k + 1) % 3], l = em.get(a < b ? a * M.nV + b : b * M.nV + a); if (l && l.filter(x => keep[x[0]]).length === 2) c++; } return c; };
+      let changed = false;
+      for (const l of em.values()) {
+        const live = l.filter(x => keep[x[0]]); if (live.length <= 2) continue;
+        let best = null;
+        for (let i = 0; i < live.length; i++) for (let j = i + 1; j < live.length; j++) {
+          if (live[i][1] === live[j][1]) continue;   // devono percorrere lo spigolo in versi opposti
+          // si preferiscono i triangoli i cui altri spigoli sono già "chiusi" (2 triangoli): le alette hanno spigoli liberi; a parità, area maggiore
+          const sc = (closedEdges(live[i][0]) + closedEdges(live[j][0])) * 1e9 + M.A[live[i][0]] + M.A[live[j][0]]; if (!best || sc > best.sc) best = { sc, i, j };
+        }
+        if (!best) best = { i: 0, j: 1 };
+        live.forEach((x, idx) => { if (idx !== best.i && idx !== best.j) { keep[x[0]] = 0; fins++; changed = true; } });
+      }
+      if (!changed) break;
+    }
+    let n = 0; for (let t = 0; t < M.nT; t++) n += keep[t];
+    const soup = new Float32Array(n * 9); let o = 0; const names = M.triName ? new Int32Array(n) : null;
+    for (let t = 0; t < M.nT; t++) if (keep[t]) {
+      for (let k = 0; k < 3; k++) soup.set(M.P(M.T[3 * t + k]), o * 9 + k * 3);
+      if (names) names[o] = M.triName[t];
+      o++;
+    }
+    if (names) { soup.triName = names; soup.names = M.names; }
+    return { soup, removed: M.nT - n, duplicates: dup, fins };
+  }
+
   function fillHoles(M) {
     const half = new Map();
     for (let t = 0; t < M.nT; t++) for (let k = 0; k < 3; k++) {
@@ -1477,7 +1566,7 @@
         let o = 0; for (const t of tris) { const p = [M.C[3 * t], M.C[3 * t + 1], M.C[3 * t + 2]], d = sub(p, T.center), h = dot(d, T.axis), q = add(T.center, mul(norm(sub(d, mul(T.axis, h))), T.R)); o += M.A[t] * dot(Nv(t), sub(p, q)); }
         return { type, err: T.maxErr, center: T.center, axis: T.axis, R: T.R, r: T.r, outward: o >= 0 };
       }
-      if (type === 'bspline') { const B = fitBSpline(M, tris, maxErr); return B && { type, err: B.maxErr, nc: B.nc, cp: B.cp, segs: B.segs, normal: B.normal }; }
+      if (type === 'bspline') { const B = fitBSpline(M, tris, maxErr); return B && { type, err: B.maxErr, nc: B.nc, cp: B.cp, segs: B.segs, normal: B.normal, dist: B.dist }; }
       if (type === 'freeform') return { type, err: 0 };
       return null;
     };
@@ -1536,7 +1625,8 @@
     for (let t = 0; t < M.nT; t++) {
       const r = seg.regions[seg.face[t]]; let d = 0;
       // [2026-10-06 v1.3.2] prima: if (r.type === 'bspline' && r.devTri) d = r.devTri.get(t) || 0;  (devTri non è mai impostato -> sempre 0, mappa tutta verde)
-      if (r.type === 'bspline') d = r.devTri ? (r.devTri.get(t) || 0) : (r.err || 0);   // senza dato per triangolo: scarto massimo del fit della regione
+      // [v1.4.0] prima (1.3.2): sempre r.err (un solo valore per regione); ora scarto verticale vero dei vertici del triangolo
+      if (r.type === 'bspline') { if (r.dist) for (let k = 0; k < 3; k++) d = Math.max(d, r.dist(M.P(M.T[3 * t + k]))); else d = r.err || 0; }
       else for (let k = 0; k < 3; k++) d = Math.max(d, surfDist(r, M.P(M.T[3 * t + k])));
       dev[t] = d; mx = Math.max(mx, d);
     }
@@ -1552,7 +1642,41 @@
   }
   const stepStr = s => "'" + String(s).replace(/'/g, "''").replace(/[^\x20-\x7e]/g, '_') + "'";
 
+  // ---- [v1.4.0] Filettature -> cilindro nominale (solo per l'export STEP, su una copia della mesh) ----
+  // I vertici delle regioni 'thread' vengono proiettati radialmente sul raggio nominale (esterno: Ø nominale ISO o cresta;
+  // interno: fondo del foro = rmin). Le proiezioni sono radiali, quindi i piani ⟂ asse che chiudono il filetto restano piani.
+  // Le altre regioni che toccano vertici spostati (tranne piani ⟂ asse) diventano sfaccettate (freeform) per restare valide.
+  function threadsToCylinders(M, seg) {
+    const ths = seg.regions.filter(r => r.type === 'thread');
+    if (!ths.length) return { M, seg, n: 0 };
+    const V = new Float64Array(M.V), P = i => [V[3 * i], V[3 * i + 1], V[3 * i + 2]];
+    const moved = new Uint8Array(M.nV), cylOf = new Map();
+    for (const r of ths) {
+      const R = r.internal ? r.rmin : (r.nominal ? r.nominal / 2 : r.rmax), a = r.axis, o = r.origin;
+      for (const t of r.tris) for (let k = 0; k < 3; k++) {
+        const v = M.T[3 * t + k]; if (moved[v]) continue;
+        const d = sub(P(v), o), h = dot(d, a), q = sub(d, mul(a, h)), l = len(q); if (l < 1e-9) continue;
+        const np = add(o, add(mul(a, h), mul(q, R / l))); V[3 * v] = np[0]; V[3 * v + 1] = np[1]; V[3 * v + 2] = np[2]; moved[v] = 1;
+      }
+    }
+    const N = new Float64Array(M.N), A = new Float64Array(M.A), C = new Float64Array(M.C);
+    for (let t = 0; t < M.nT; t++) {
+      if (!(moved[M.T[3 * t]] || moved[M.T[3 * t + 1]] || moved[M.T[3 * t + 2]])) continue;
+      const a = P(M.T[3 * t]), b = P(M.T[3 * t + 1]), c = P(M.T[3 * t + 2]), n = cross(sub(b, a), sub(c, a)), l = len(n);
+      A[t] = l / 2; N.set(l > 0 ? mul(n, 1 / l) : [0, 0, 1], 3 * t); C.set(mul(add(add(a, b), c), 1 / 3), 3 * t);
+    }
+    const M2 = Object.assign({}, M, { V, P, N, A, C });
+    const regions = seg.regions.map(r => {
+      if (r.type === 'thread') return { id: r.id, type: 'cylinder', tris: r.tris, axis: r.axis, origin: r.origin, radius: r.internal ? r.rmin : (r.nominal ? r.nominal / 2 : r.rmax), height: r.length, err: 0, outward: !r.internal, threadLabel: r.label };
+      if (!r.tris.some(t => moved[M.T[3 * t]] || moved[M.T[3 * t + 1]] || moved[M.T[3 * t + 2]])) return r;
+      if (r.type === 'plane' && ths.some(th => Math.abs(dot(r.normal, th.axis)) > Math.cos(0.5 * Math.PI / 180))) return r;
+      return { id: r.id, type: 'freeform', tris: r.tris, err: 0 };
+    });
+    return { M: M2, seg: Object.assign({}, seg, { regions }), n: ths.length };
+  }
+
   function exportSTEP(M, seg, opts = {}) {
+    if (opts.threadCyl) ({ M, seg } = threadsToCylinders(M, seg));   // [v1.4.0]
     const name = opts.name || 'mesh2step', tol = Math.max(opts.tol || 0.01, 1e-4);
     const lines = []; let nid = 0;
     const E = s => { nid++; lines.push('#' + nid + '=' + s + ';'); return '#' + nid; };
@@ -1595,6 +1719,13 @@
       const tris = r.tris.filter(included); if (!tris.length) continue;
       let faceted = r.type === 'freeform' || r.type === 'thread';
       if (!faceted) { const inR = new Set(r.tris); faceted = !r.tris.some(t => [0, 1, 2].some(j => { const u = M.nb[3 * t + j]; return u < 0 || !inR.has(u); })); }
+      // [v1.4.0 2026-10-07] sfera/toro COMPLETI (nessun bordo): divisi in due metà con un piano per il centro/asse ->
+      // due facce analitiche (prima: una faccia piana per triangolo). Sfera: due emisferi; toro: due semi-tubi.
+      if (faceted && (r.type === 'sphere' || r.type === 'torus') && r.center) {
+        const nn = r.type === 'sphere' ? [0, 0, 1] : perp(r.axis), ga = [], gb = [];
+        for (const t of tris) (dot(sub([M.C[3 * t], M.C[3 * t + 1], M.C[3 * t + 2]], r.center), nn) >= 0 ? ga : gb).push(t);
+        if (ga.length && gb.length) { for (const g of [ga, gb]) { for (const t of g) fid[t] = nF; nF++; faceInfo.push({ region: r, tris: g }); } continue; }
+      }
       if (faceted) for (const t of tris) { fid[t] = nF++; faceInfo.push({ region: r, tris: [t], faceted: true }); }
       else { for (const t of tris) fid[t] = nF; nF++; faceInfo.push({ region: r, tris }); }
     }
@@ -1744,7 +1875,7 @@
       else if (r.type === 'freeform') { const t = fi.tris[0], n = [M.N[3 * t], M.N[3 * t + 1], M.N[3 * t + 2]]; surf = E(`PLANE('',${place(M.P(M.T[3 * t]), n, perp(n))})`); }
       else if (r.type === 'cylinder') { surf = E(`CYLINDRICAL_SURFACE('',${place(r.origin, r.axis, perp(r.axis))},${stepNum(r.radius)})`); sense = r.outward ? '.T.' : '.F.'; }
       else if (r.type === 'sphere') { surf = E(`SPHERICAL_SURFACE('',${place(r.center, [0, 0, 1], [1, 0, 0])},${stepNum(r.radius)})`); sense = r.outward ? '.T.' : '.F.'; }
-      if (!fi.faceted && r.type === 'cylinder') fname = (r.outward ? 'SHAFT D' : 'HOLE D') + (2 * r.radius).toFixed(3);
+      if (!fi.faceted && r.type === 'cylinder') fname = r.threadLabel ? 'THREAD ' + r.threadLabel : (r.outward ? 'SHAFT D' : 'HOLE D') + (2 * r.radius).toFixed(3);
       const af = E(`ADVANCED_FACE(${stepStr(fname)},(${fb.join(',')}),${surf},${sense})`);
       // [2026-10-06] versione precedente: const af = E(`ADVANCED_FACE('',(${fb.join(',')}),${surf},${sense})`);
       const c = M.comp[fi.tris[0]];
@@ -1784,6 +1915,100 @@
     return { text: head.concat(lines, ['ENDSEC;', 'END-ISO-10303-21;']).join('\n') + '\n', faces: nF, edges: edgeStats, solids: items.length, surfaces: surfItems.length };
   }
 
+  // ============ 6. [v1.4.0 2026-10-07] REPORT PDF CON DISEGNO QUOTATO DEI FORI ============
+  // PDF 1.4 minimale scritto a mano (nessuna libreria): vista lungo l'asse dei fori più frequente (contorno = inviluppo
+  // convesso della proiezione della mesh), fori numerati (continuo = passante, tratteggio = cieco), quote d'ingombro e
+  // tabelle fori / filettature / alberi. Coordinate dei fori dall'angolo in basso a sinistra della vista.
+  // o: { name, L: {testi}, num: x => stringa }  (i testi arrivano dal dizionario IT/EN dell'app)
+  function reportPdf(M, seg, o) {
+    const L = o.L, num = o.num || ((x, d = 2) => x.toFixed(d)), f = features(M, seg), holes = f.holes;
+    // --- asse di vista: quello del gruppo di fori più numeroso (altrimenti Z) ---
+    const dom = a => { const i = [0, 1, 2].reduce((b, k) => (Math.abs(a[k]) > Math.abs(a[b]) ? k : b), 0); return a[i] < 0 ? mul(a, -1) : a; };
+    let a = [0, 0, 1];
+    if (holes.length) {
+      const groups = [];
+      for (const h of holes) { const ha = dom(h.axis); let g = groups.find(g => Math.abs(dot(g.a, ha)) > Math.cos(Math.PI / 180)); if (!g) groups.push(g = { a: ha, n: 0 }); g.n++; }
+      a = groups.sort((x, y) => y.n - x.n)[0].a;
+    }
+    const AX = [[1, 0, 0], [0, 1, 0], [0, 0, 1]], wi = AX.findIndex(w => Math.abs(dot(w, a)) > 0.9998);
+    let u, v;
+    if (wi >= 0) { a = AX[wi]; u = AX[(wi + 1) % 3]; v = AX[(wi + 2) % 3]; } else { u = norm(perp(a)); v = cross(a, u); }
+    // --- proiezione + inviluppo convesso (monotone chain) ---
+    const pts2 = []; let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+    for (let i = 0; i < M.nV; i++) { const p = [M.V[3 * i], M.V[3 * i + 1], M.V[3 * i + 2]], x = dot(p, u), y = dot(p, v); pts2.push([x, y]); u0 = Math.min(u0, x); u1 = Math.max(u1, x); v0 = Math.min(v0, y); v1 = Math.max(v1, y); }
+    pts2.sort((p, q) => p[0] - q[0] || p[1] - q[1]);
+    const cr = (o2, p, q) => (p[0] - o2[0]) * (q[1] - o2[1]) - (p[1] - o2[1]) * (q[0] - o2[0]);
+    const lower = [], upper = [];
+    for (const p of pts2) { while (lower.length >= 2 && cr(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop(); lower.push(p); }
+    for (let i = pts2.length - 1; i >= 0; i--) { const p = pts2[i]; while (upper.length >= 2 && cr(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop(); upper.push(p); }
+    const hull = lower.slice(0, -1).concat(upper.slice(0, -1));
+    const W = Math.max(u1 - u0, 1e-9), H = Math.max(v1 - v0, 1e-9);
+    // --- scrittore di contenuto (coordinate "dall'alto" ty, convertite in coordinate PDF) ---
+    const c = [], PH = 841.89, Y = ty => (PH - ty).toFixed(2), X = x => x.toFixed(2);
+    const clean = t => String(t).replace(/[—–]/g, '-').replace(/[^\x20-\xff]/g, '?').replace(/([\\()])/g, '\\$1');
+    const text = (x, ty, t, size = 9, bold = false) => c.push(`BT /${bold ? 'F2' : 'F1'} ${size} Tf ${X(x)} ${Y(ty)} Td (${clean(t)}) Tj ET`);
+    const textV = (x, ty, t, size = 8) => c.push(`BT /F1 ${size} Tf 0 1 -1 0 ${X(x)} ${Y(ty)} Tm (${clean(t)}) Tj ET`);
+    const line = (x1, y1, x2, y2) => c.push(`${X(x1)} ${Y(y1)} m ${X(x2)} ${Y(y2)} l S`);
+    const circle = (cx, cy, r) => { const k = 0.5523 * r; c.push(`${X(cx + r)} ${Y(cy)} m ${X(cx + r)} ${Y(cy - k)} ${X(cx + k)} ${Y(cy - r)} ${X(cx)} ${Y(cy - r)} c ${X(cx - k)} ${Y(cy - r)} ${X(cx - r)} ${Y(cy - k)} ${X(cx - r)} ${Y(cy)} c ${X(cx - r)} ${Y(cy + k)} ${X(cx - k)} ${Y(cy + r)} ${X(cx)} ${Y(cy + r)} c ${X(cx + k)} ${Y(cy + r)} ${X(cx + r)} ${Y(cy + k)} ${X(cx + r)} ${Y(cy)} c S`); };
+    text(40, 52, 'Mesh2STEP — ' + L.title, 16, true);
+    text(40, 70, `${L.file}: ${o.name}`, 10);
+    text(40, 84, `${L.size}: ${num(W, 2)} × ${num(H, 2)} mm (${L.view} ${['X', 'Y', 'Z'][wi >= 0 ? wi : 2]}${wi >= 0 ? '' : '*'})`, 10);
+    // --- disegno ---
+    const bx = 76, bw = 443, bt = 125, bh = 275, sc = Math.min(bw / W, bh / H), ox = bx + (bw - W * sc) / 2, bot = bt + bh - (bh - H * sc) / 2;
+    const P = (x, y) => [ox + (x - u0) * sc, bot - (y - v0) * sc];
+    c.push('0.8 w 0.15 G');
+    hull.forEach((p, i) => { const q = hull[(i + 1) % hull.length], A = P(p[0], p[1]), B = P(q[0], q[1]); line(A[0], A[1], B[0], B[1]); });
+    const inView = holes.filter(h => Math.abs(dot(h.axis, a)) > Math.cos(Math.PI / 180));
+    inView.forEach((h, i) => {
+      h.n = i + 1; const q = P(dot(h.origin, u), dot(h.origin, v)), r = Math.max(h.diameter / 2 * sc, 1.2);
+      c.push(h.through ? '[] 0 d' : '[3 2] 0 d'); circle(q[0], q[1], r); c.push('[] 0 d');
+      line(q[0] - r - 3, q[1], q[0] + r + 3, q[1]); line(q[0], q[1] - r - 3, q[0], q[1] + r + 3);
+      text(q[0] + r * 0.72 + 2, q[1] - r * 0.72 - 2, String(h.n), 8, true);
+    });
+    // quote d'ingombro
+    c.push('0.4 w 0.4 G');
+    const xb = ox + W * sc, yb = bot + 16; line(ox, yb, xb, yb); line(ox, yb - 4, ox, yb + 4); line(xb, yb - 4, xb, yb + 4);
+    text((ox + xb) / 2 - 18, yb + 11, num(W, 2) + ' mm', 8);
+    const xl = ox - 16, yt = bot - H * sc; line(xl, yt, xl, bot); line(xl - 4, yt, xl + 4, yt); line(xl - 4, bot, xl + 4, bot);
+    textV(xl - 3, (yt + bot) / 2 + 18, num(H, 2) + ' mm');
+    // --- tabelle ---
+    let ty = 440; const rowH = 12, maxTy = 800;
+    const heading = t => { ty += 8; text(40, ty, t, 10, true); ty += 4; c.push('0.4 w 0.4 G'); line(40, ty, 555, ty); ty += rowH - 2; };
+    const row = (cols, xs, bold = false) => { if (ty > maxTy) return false; cols.forEach((t, i) => text(xs[i], ty, t, 8.5, bold)); ty += rowH; return true; };
+    heading(L.holes);
+    const hx = [40, 70, 130, 200, 250, 320, 390];
+    row(['#', 'Ø mm', L.type, L.depth, 'X mm', 'Y mm', L.axis], hx, true);
+    let more = 0;
+    for (const h of holes) {
+      const inV = h.n != null, X0 = inV ? dot(h.origin, u) - u0 : null, Y0 = inV ? dot(h.origin, v) - v0 : null;
+      if (!row([inV ? String(h.n) : '–', num(h.diameter, 2), h.through ? L.through : L.blind, num(h.depth, 2), inV ? num(X0, 2) : '–', inV ? num(Y0, 2) : '–', h.axis.map(x => num(x, 3)).join(' ; ')], hx)) more++;
+    }
+    if (!holes.length) row([L.none], [40]);
+    if (more) { text(40, ty, `… (+${more})`, 8.5); ty += rowH; }
+    const th = seg.regions.filter(r => r.type === 'thread');
+    if (th.length) {
+      heading(L.threads); const tx = [40, 150, 220, 290, 360];
+      row([L.thread, L.pitch, L.len, L.hand, ''], tx, true);
+      for (const r of th) row([r.label + ' ' + (r.internal ? L.internal : L.external), num(r.pitch, 2), num(r.length, 1), r.hand === 'R' ? L.right : L.left, ''], tx);
+    }
+    const sh = new Map(); for (const r of seg.regions) if (r.type === 'cylinder' && r.outward) { const k = (2 * r.radius).toFixed(2); sh.set(k, (sh.get(k) || 0) + 1); }
+    if (sh.size) { heading(L.shafts); const sx = [40, 110]; row(['Ø mm', L.count], sx, true); for (const [d, n] of [...sh].sort((p, q) => p[0] - q[0])) row([num(+d, 2), String(n)], sx); }
+    text(40, 826, `Mesh2STEP ${VERSION} — ${L.footer}`, 8);
+    // --- assemblaggio PDF ---
+    const stream = c.join('\n'), objs = [null,
+      '<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+      '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>',
+      `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+      '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
+      '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>'];
+    let out = '%PDF-1.4\n'; const offs = [];
+    for (let i = 1; i < objs.length; i++) { offs[i] = out.length; out += `${i} 0 obj\n${objs[i]}\nendobj\n`; }
+    const xr = out.length;
+    out += `xref\n0 ${objs.length}\n0000000000 65535 f \n` + offs.slice(1).map(x => String(x).padStart(10, '0') + ' 00000 n \n').join('') + `trailer\n<< /Size ${objs.length} /Root 1 0 R >>\nstartxref\n${xr}\n%%EOF\n`;
+    const bytes = new Uint8Array(out.length); for (let i = 0; i < out.length; i++) bytes[i] = out.charCodeAt(i) & 255;
+    return { bytes, holes: holes.length, inView: inView.length };
+  }
+
   // ======================== Pipeline completa ========================
   function analyse(soup, opts) {
     const M = buildMesh(soup);
@@ -1791,14 +2016,14 @@
     return { M, seg };
   }
 
-  const API = { VERSION, parseFile, parseSTL, parseOBJ, parse3MF, buildMesh, segment, exportSTEP, analyse, fitCylinder, fitSphere, fitPlane, fitCone, fitTorus, fitBSpline, detectThread, fillHoles, features, deviation, surfDist, editRegions, regionStats };
+  const API = { VERSION, parseFile, parseSTL, parseOBJ, parse3MF, buildMesh, segment, exportSTEP, analyse, fitCylinder, fitSphere, fitPlane, fitCone, fitTorus, fitBSpline, detectThread, threadsToCylinders, fixNonManifold, reportPdf, fillHoles, features, deviation, surfDist, editRegions, regionStats };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   else root.M2S = API;
 })(typeof self !== 'undefined' ? self : this);
 
 /*
  * Mesh2STEP — worker.js
- * Versione: 1.3.0 — 2026-10-06 13:40 (Europe/Rome)
+ * Versione: 1.4.0 — 2026-10-07 00:23 (Europe/Rome)
  * Versione precedente archiviata in archive/worker_v1.0.0_20261005-1710.js (2026-10-06: riscrittura
  * per editing, riparazione, export STL/OBJ, deviazione, corpi).
  *
@@ -1809,7 +2034,8 @@
  *   analyse {opts}                 -> risultato analisi (vedi result())
  *   edit    {ids, as, maxErr}      -> risultato analisi aggiornato      (unione/conversione facce)
  *   undo    {}                     -> risultato analisi precedente
- *   step    {opts:{tol, bodies}}   -> {text, ...}
+ *   step    {opts:{tol, bodies, threadCyl}}   -> {text, ...}
+ *   pdf     {L, lang}              -> {buf: PDF}  [v1.4.0]
  *   stl     {}                     -> {buf}   STL binario della mesh corrente
  *   obj     {}                     -> {text}  OBJ con un gruppo per faccia riconosciuta
  */
@@ -1874,10 +2100,13 @@ self.onmessage = async ({ data }) => {
       const { pos, info } = meshPayload();
       reply({ positions: pos, info }, [pos.buffer]);
     } else if (cmd === 'repair') {
+      // [v1.4.0] prima: solo const r = M2S.fillHoles(M);  ora prima si tolgono duplicati e alette non-manifold
+      const fx = M.nonManifold > 0 ? M2S.fixNonManifold(M) : { removed: 0 };
+      if (fx.removed) M = M2S.buildMesh(fx.soup);
       const r = M2S.fillHoles(M);
       M = M2S.buildMesh(r.soup); seg = null; history.length = 0;
       const { pos, info } = meshPayload();
-      reply({ positions: pos, info, holes: r.holes, added: r.added }, [pos.buffer]);
+      reply({ positions: pos, info, holes: r.holes, added: r.added, removed: fx.removed }, [pos.buffer]);
     } else if (cmd === 'analyse') {
       const t0 = performance.now();
       lastOpts = data.opts; seg = M2S.segment(M, data.opts); history.length = 0;
@@ -1895,8 +2124,11 @@ self.onmessage = async ({ data }) => {
       const { msg, transfer } = result({ canUndo: history.length > 0 });
       reply(msg, transfer);
     } else if (cmd === 'step') {
-      const r = M2S.exportSTEP(M, seg, { name: lastName, tol: data.opts.tol, bodies: data.opts.bodies });
+      const r = M2S.exportSTEP(M, seg, { name: lastName, tol: data.opts.tol, bodies: data.opts.bodies, threadCyl: data.opts.threadCyl });
       reply({ text: r.text, faces: r.faces, edges: r.edges, solids: r.solids, surfaces: r.surfaces, name: lastName });
+    } else if (cmd === 'pdf') {   // [v1.4.0] report PDF con disegno quotato dei fori
+      const r = M2S.reportPdf(M, seg, { name: lastName, L: data.L, lang: data.lang });
+      reply({ buf: r.bytes.buffer, name: lastName }, [r.bytes.buffer]);
     } else if (cmd === 'stl') {
       const buf = new ArrayBuffer(84 + 50 * M.nT), dv = new DataView(buf);
       new Uint8Array(buf).set(new TextEncoder().encode('Mesh2STEP ' + lastName).slice(0, 80));
@@ -3455,7 +3687,7 @@ export { OrbitControls };
 </script>
 <script id="app-src" type="text/plain">/*
  * Mesh2STEP — app.js
- * Versione: 1.3.2 — 2026-10-06 21:45 (Europe/Rome)
+ * Versione: 1.4.0 — 2026-10-07 00:23 (Europe/Rome)
  * Versione precedente archiviata: archive/app_v1.0.1_20261006-1310.js
  * (2026-10-06: riscritta per editing facce, corpi, report CSV, export STL/OBJ, heatmap deviazione,
  *  viste, IT/EN, tema chiaro, condivisione, PWA e API di integrazione).
@@ -3465,7 +3697,7 @@ export { OrbitControls };
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const VERSION = '1.3.2';
+const VERSION = '1.4.0';
 const $ = id => document.getElementById(id);
 const store = { get: k => { try { return localStorage.getItem('m2s.' + k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem('m2s.' + k, v); } catch { /* storage non disponibile */ } } };
 
@@ -3486,7 +3718,8 @@ const DICT = {
     reading: 'Lettura di {f}…', loaded: 'Mesh caricata.', open_warn: 'Mesh aperta: usa «Chiudi i buchi» oppure lo STEP sarà una superficie.', analysing: 'Riconoscimento superfici…',
     done: 'Analisi completata in {s} s.', many_free: ' Molte zone freeform: prova ad aumentare la tolleranza.', step_gen: 'Generazione STEP…',
     step_ok: 'STEP salvato: {f} facce ({c} spigoli circolari, {l} rettilinei), {s} solido/i.', step_surf: 'STEP salvato: {f} facce, superficie aperta.',
-    repaired: 'Chiusi {h} buchi con {a} triangoli.', no_holes: 'Nessun buco da chiudere.', err: 'Errore: ',
+    pdf: 'Report PDF', o_thrcyl: 'Filettature come cilindro nominale (STEP)', pdf_title: 'Report fori', pdf_file: 'File', pdf_size: 'Ingombro', pdf_view: 'vista asse', pdf_type: 'Tipo', pdf_axis: 'Asse', pdf_none: 'Nessun foro', pdf_thread: 'Filetto', pdf_len: 'Lunghezza', pdf_hand: 'Senso', pdf_internal: 'interna', pdf_external: 'esterna', pdf_right: 'destra', pdf_left: 'sinistra', pdf_count: 'n.', pdf_footer: 'misure in mm; X/Y dall\'angolo in basso a sinistra della vista',
+    repaired: 'Chiusi {h} buchi con {a} triangoli.', repaired_nm: 'Rimossi {n} triangoli non-manifold (duplicati/alette); chiusi {h} buchi con {a} triangoli.', no_holes: 'Nessun buco da chiudere.', err: 'Errore: ',
     'err.notConnected': 'le facce selezionate non sono contigue', 'err.fit': 'nessuna superficie entro lo scarto richiesto (migliore: {b} mm)', 'err.noUndo': 'niente da annullare', 'err.empty': 'nessuna faccia selezionata',
     sel_n: '{n} facce selezionate ({t} triangoli)', edited: 'Modifica applicata.', undone: 'Modifica annullata.',
     k_type: 'Tipo', k_tris: 'Triangoli', k_area: 'Area', k_dia: 'Diametro', k_len: 'Lunghezza', k_axis: 'Asse', k_err: 'Scarto max', k_rad: 'Raggio', k_center: 'Centro', k_normal: 'Normale',
@@ -3511,7 +3744,8 @@ const DICT = {
     reading: 'Reading {f}…', loaded: 'Mesh loaded.', open_warn: 'Open mesh: use "Close mesh holes" or the STEP will be a surface.', analysing: 'Recognising surfaces…',
     done: 'Analysis done in {s} s.', many_free: ' Many freeform areas: try a larger tolerance.', step_gen: 'Generating STEP…',
     step_ok: 'STEP saved: {f} faces ({c} circular, {l} straight edges), {s} solid(s).', step_surf: 'STEP saved: {f} faces, open surface.',
-    repaired: 'Closed {h} holes with {a} triangles.', no_holes: 'No holes to close.', err: 'Error: ',
+    pdf: 'PDF report', o_thrcyl: 'Threads as nominal cylinder (STEP)', pdf_title: 'Hole report', pdf_file: 'File', pdf_size: 'Overall size', pdf_view: 'view axis', pdf_type: 'Type', pdf_axis: 'Axis', pdf_none: 'No holes', pdf_thread: 'Thread', pdf_len: 'Length', pdf_hand: 'Hand', pdf_internal: 'internal', pdf_external: 'external', pdf_right: 'right', pdf_left: 'left', pdf_count: 'no.', pdf_footer: 'dimensions in mm; X/Y from the lower-left corner of the view',
+    repaired: 'Closed {h} holes with {a} triangles.', repaired_nm: 'Removed {n} non-manifold triangles (duplicates/fins); closed {h} holes with {a} triangles.', no_holes: 'No holes to close.', err: 'Error: ',
     'err.notConnected': 'the selected faces are not contiguous', 'err.fit': 'no surface within the requested deviation (best: {b} mm)', 'err.noUndo': 'nothing to undo', 'err.empty': 'no face selected',
     sel_n: '{n} faces selected ({t} triangles)', edited: 'Edit applied.', undone: 'Edit undone.',
     k_type: 'Type', k_tris: 'Triangles', k_area: 'Area', k_dia: 'Diameter', k_len: 'Length', k_axis: 'Axis', k_err: 'Max deviation', k_rad: 'Radius', k_center: 'Centre', k_normal: 'Normal',
@@ -3691,7 +3925,7 @@ function showInfo() {
     [t('f_volume'), closed ? fmt(Math.abs(info.volume) / 1000, 2) + ' cm³' : '—'],
   ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
   $('meshinfo').hidden = false;
-  $('repair').hidden = info.open === 0;
+  $('repair').hidden = info.open === 0 && info.nonManifold === 0;   // [v1.4.0] prima: solo info.open === 0
 }
 function onMesh(r) {
   info = r.info; res = null; sel.clear();
@@ -3723,7 +3957,7 @@ $('repair').onclick = async () => {
   try {
     busy(true);
     const r = await call({ cmd: 'repair' });
-    onMesh(r); status(r.holes ? t('repaired', { h: r.holes, a: r.added }) : t('no_holes'));
+    onMesh(r); status(r.removed ? t('repaired_nm', { n: r.removed, h: r.holes, a: r.added }) : r.holes ? t('repaired', { h: r.holes, a: r.added }) : t('no_holes'));
     await analyse();
   } catch (e) { status(t('err') + errText(e), 'err'); } finally { busy(false); }
 };
@@ -3799,7 +4033,7 @@ function download(data, name, type) {
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 async function makeStep() {
-  const r = await call({ cmd: 'step', opts: { tol: analysedTol, bodies: bodyCfg } });
+  const r = await call({ cmd: 'step', opts: { tol: analysedTol, bodies: bodyCfg, threadCyl: $('o_thrcyl').checked } });   // [v1.4.0] threadCyl
   status(r.solids ? t('step_ok', { f: r.faces, c: r.edges.circle, l: r.edges.line, s: r.solids }) : t('step_surf', { f: r.faces }));
   return r;
 }
@@ -3826,6 +4060,16 @@ $('csv').onclick = () => {
     if (r.type === 'cone') rows.push(['cone', '', '', '', ...r.axis.map(n), ...r.apex.map(n), `${n(r.alpha * 360 / Math.PI)}°`].join(sep));
   }
   download('﻿' + rows.join('\r\n') + '\r\n', (fileName.replace(/\.[^.]+$/, '') || 'mesh') + '_report.csv', 'text/csv');
+};
+
+// report PDF con disegno quotato dei fori (generato nel worker, nessun upload)
+$('pdf').onclick = async () => {
+  try {
+    busy(true);
+    const L = { title: t('pdf_title'), file: t('pdf_file'), size: t('pdf_size'), view: t('pdf_view'), holes: t('h_holes'), type: t('pdf_type'), depth: t('h_depth'), axis: t('pdf_axis'), through: t('through'), blind: t('blind'), none: t('pdf_none'), threads: t('h_threads'), thread: t('pdf_thread'), pitch: t('k_pitch'), len: t('pdf_len'), hand: t('pdf_hand'), internal: t('pdf_internal'), external: t('pdf_external'), right: t('pdf_right'), left: t('pdf_left'), shafts: t('shafts'), count: t('pdf_count'), footer: t('pdf_footer') };
+    const r = await call({ cmd: 'pdf', L, lang });
+    download(r.buf, r.name + '_report.pdf', 'application/pdf');
+  } catch (e) { status(t('err') + errText(e), 'err'); } finally { busy(false); }
 };
 
 // ============================ Integrazione e PWA ============================

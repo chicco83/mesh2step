@@ -1,5 +1,5 @@
 # CONTEXT — Mesh2STEP
-Versione documento: 1.3.0 — 2026-10-06 14:10
+Versione documento: 1.4.0 — 2026-10-07 00:23
 
 ## Scopo
 Web app che converte mesh triangolari (STL, OBJ, 3MF) in file STEP con **geometria CAD reale**:
@@ -19,7 +19,7 @@ Nasce come replica clean-room di <https://mesh2solid.thavision.com/> (tha:vision
 | Lingue | DE / EN |
 | Telemetria | contatori anonimi via `sendBeacon('./api/hit')` |
 
-## Architettura di Mesh2STEP (v1.3.0)
+## Architettura di Mesh2STEP (v1.4.0)
 ```
 index.html ── src/app.js (UI, viewer three.js, i18n, editing, export, API integrazione)
    │             │ postMessage (buffer trasferiti, zero copie)
@@ -60,15 +60,20 @@ index.html ── src/app.js (UI, viewer three.js, i18n, editing, export, API in
 - Nome diverso ("Mesh2STEP") e codice scritto da zero: nessun asset/codice/testo dell'originale.
 - JS invece di Rust/WASM: 205 k triangoli in 3 s, sufficiente (rivalutare oltre 1 M).
 - Tolleranza STEP (`UNCERTAINTY_MEASURE`) = tolleranza di riconoscimento.
-- Filettature esportate sfaccettate (geometria fedele) con nome faccia `THREAD Mx`: la sostituzione col cilindro
-  nominale cambierebbe i bordi delle facce vicine.
-- Regioni chiuse senza bordo (sfera/toro completi) sfaccettate: `ADVANCED_FACE` richiede almeno un anello.
+- Filettature: di default esportate sfaccettate (geometria fedele) con nome faccia `THREAD Mx`. [2026-10-07, v1.4.0] Opzione *cilindro nominale*:
+  i vertici del filetto si proiettano **radialmente** su una copia della mesh (i piani ⟂ asse restano piani; le altre regioni toccate
+  diventano sfaccettate). Spenta di default perché cambia volume e geometria.
+- Regioni chiuse senza bordo: prima sfaccettate (`ADVANCED_FACE` richiede un anello). [2026-10-07, v1.4.0] sfera e toro si dividono con un piano
+  per centro/asse in due facce analitiche (emisferi / semi-tubi); altri tipi chiusi restano sfaccettati.
+- **Non** fatto, di proposito: ricostruzione di auto-intersezioni (richiede booleane robuste); filettatura che sostituisce il cilindro
+  nello STEP senza opzione (cambierebbe il volume senza che l'utente lo scelga).
 - Editing manuale: le regioni unite devono essere contigue (una faccia = una zona connessa).
 - App Windows con WebView2 (stessa scelta di 3D STL Multipart Maker), file web come risorse incorporate.
 
-## Limiti noti v1.3.0
-- Filettature non sostituite dal cilindro nominale; B-spline solo per zone "campo di altezze".
-- Riparazione solo dei buchi (non di spigoli non-manifold o auto-intersezioni).
+## Limiti noti v1.4.0
+- B-spline solo per zone "campo di altezze"; deviazione di freeform e filettature = 0 (nessuna superficie di riferimento).
+- Riparazione: buchi e non-manifold; non le auto-intersezioni.
+- Report PDF su una sola pagina.
 - Exe Windows compilato ma non ancora provato su Windows.
 
 ## Cronologia delle sessioni
@@ -77,10 +82,10 @@ index.html ── src/app.js (UI, viewer three.js, i18n, editing, export, API in
 | 2026-10-05 | Cowork cloud | Analisi del sito di riferimento, v1.0.0 (piani, cilindri, sfere, STEP), commit `729f9ed` caricato dall'utente |
 | 2026-10-06 mattina | Cowork cloud | v1.0.1 README completo; v1.1.0–1.3.0 tutte le migliorie (commit `e1e10bb`, `61c8f81`), consegnate come git bundle perché la sessione non poteva fare push; pubblicate dall'utente; Pages verificato online |
 | 2026-10-06 14:10 | Cowork cloud | Documentazione per riprendere il lavoro da Claude Code |
+| 2026-10-07 | Claude Code (locale) | v1.3.1–1.3.2: colori per tipo, selezione, deviazione B-spline, fix CI, prova UI nel browser integrato. v1.4.0: filettature→cilindro, sfere spurie, sfera/toro completi, non-manifold, report PDF |
 
 ## Problemi aperti
 - Exe Windows mai avviato su Windows (compilato da Linux con `EnableWindowsTargeting`).
-- Esito della CI `ci.yml` su GitHub non ancora controllato.
-- Sfere spurie nelle zone di uscita dei filetti (`bolt_m6`: 8 sfere piccole).
-- Toro e sfera completi esportati sfaccettati; filettature sfaccettate.
-- Riparazione limitata ai buchi.
+- Pulsante «Converti in STEP» da aggiungere nel repo 3D STL Multipart Maker.
+- Auto-intersezioni non riparate.
+- B-spline per superfici che si richiudono; deviazione per freeform/filettature.
