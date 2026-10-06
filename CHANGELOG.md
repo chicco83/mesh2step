@@ -1,5 +1,10 @@
 # CHANGELOG — Mesh2STEP
-Versione documento: 1.0.0 — 2026-10-05 17:10
+Versione documento: 1.0.1 — 2026-10-06 13:10
+
+## 2. [1.0.1] — 2026-10-06 13:10
+**Documentazione**
+- README completo: elenco di tutte le funzioni (import, analisi, riconoscimento, viewer, misure, parametri, export STEP, piattaforma), avvio rapido, algoritmo, tabella risultati test, struttura, limiti.
+- Build rigenerata: `dist/mesh2step_v1.0.1_20261006-1310.html` (codice invariato salvo numero di versione).
 
 ## 1. [1.0.0] — 2026-10-05 17:10
 Prima versione, replica clean-room delle funzioni gratuite di mesh2solid.thavision.com.

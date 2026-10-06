@@ -1,12 +1,12 @@
 /*
  * Mesh2STEP — app.js
- * Versione: 1.0.0 — 2026-10-05 17:10 (Europe/Rome)
+ * Versione: 1.0.1 — 2026-10-06 13:10 (Europe/Rome)
  * UI + viewer three.js. Tutto il calcolo pesante è nel Web Worker (worker.js + core.js).
  */
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const VERSION = '1.0.0';
+const VERSION = '1.0.1';
 const $ = id => document.getElementById(id);
 $('ver').textContent = 'v' + VERSION;
 
