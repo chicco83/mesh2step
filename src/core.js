@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — core.js
- * Versione: 1.0.0 — 2026-10-05 17:10 (Europe/Rome)
+ * Versione: 1.3.0 — 2026-10-06 13:40 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
  * ---------------------------------------------------------------------------
  * Motore indipendente dalla UI (gira nel Web Worker del browser e in Node per i test).
  *   1. Parsing  : STL (binario/ASCII), OBJ, 3MF (zip letto a mano + DecompressionStream)
@@ -12,7 +12,7 @@
  */
 (function (root) {
   'use strict';
-  const VERSION = '1.0.0';
+  const VERSION = '1.3.0';
 
   // ===================== Helper vettoriali (array [x,y,z]) =====================
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -77,26 +77,34 @@
     }
     // STL ASCII: legge tutte le righe "vertex x y z"
     const txt = new TextDecoder().decode(buf);
-    const re = /vertex\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)/g;
-    const arr = []; let m;
-    while ((m = re.exec(txt))) arr.push(+m[1], +m[2], +m[3]);
+    const re = /vertex\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)|^\s*solid[ \t]*([^\r\n]*)/gm;
+    const arr = [], names = [], triName = []; let m, cur = -1;   // [v1.1.0] nome di ogni 'solid'
+    while ((m = re.exec(txt))) {
+      if (m[1] === undefined) { const nm = (m[4] || '').trim(); if (nm) { cur = names.indexOf(nm); if (cur < 0) { names.push(nm); cur = names.length - 1; } } else cur = -1; continue; }
+      arr.push(+m[1], +m[2], +m[3]); if (arr.length % 9 === 0) triName.push(cur);
+    }
     if (!arr.length || arr.length % 9) throw new Error('STL non valido');
-    return new Float32Array(arr);
+    const soup = new Float32Array(arr);
+    if (names.length) { soup.triName = new Int32Array(triName); soup.names = names; }
+    return soup;
   }
 
   function parseOBJ(buf) {
     const lines = new TextDecoder().decode(buf).split(/\r?\n/);
-    const v = [], out = [];
+    const v = [], out = [], triName = [], names = []; let cur = -1;   // [v1.1.0] nomi da 'o'/'g'
     for (const l of lines) {
+      if (/^[og]\s+/.test(l)) { const nm = l.slice(2).trim(); cur = names.indexOf(nm); if (cur < 0) { names.push(nm); cur = names.length - 1; } continue; }
       if (l.startsWith('v ')) { const p = l.trim().split(/\s+/); v.push([+p[1], +p[2], +p[3]]); }
       else if (l.startsWith('f ')) {
         // indici 1-based, negativi = relativi; formati v, v/vt, v/vt/vn, v//vn; poligoni -> ventaglio
         const idx = l.trim().split(/\s+/).slice(1).map(s => { const i = parseInt(s, 10); return i < 0 ? v.length + i : i - 1; });
-        for (let k = 1; k + 1 < idx.length; k++) for (const j of [idx[0], idx[k], idx[k + 1]]) out.push(...v[j]);
+        for (let k = 1; k + 1 < idx.length; k++) { for (const j of [idx[0], idx[k], idx[k + 1]]) out.push(...v[j]); triName.push(cur); }
       }
     }
     if (!out.length) throw new Error('OBJ senza facce');
-    return new Float32Array(out);
+    const soup = new Float32Array(out);
+    if (names.length) { soup.triName = new Int32Array(triName); soup.names = names; }
+    return soup;
   }
 
   // Decompressione deflate grezza con API nativa (browser moderni / Node 18+)
@@ -129,6 +137,7 @@
     };
   }
 
+  /* [2026-10-06] versione precedente parse3MF (senza trasformazioni build/component e senza nomi):
   async function parse3MF(buf) {
     const z = await unzip(buf);
     const models = z.names.filter(n => /\.model$/i.test(n));
@@ -149,6 +158,53 @@
     }
     if (!out.length) throw new Error('3MF senza triangoli');
     return new Float32Array(out);
+  }
+
+  */
+  // [v1.1.0] 3MF: oggetti con nome, componenti annidati, trasformazioni di build/item e component,
+  // unità convertite in mm; ogni triangolo conserva il nome dell'oggetto (-> nome del corpo nello STEP)
+  async function parse3MF(buf) {
+    const z = await unzip(buf);
+    const models = z.names.filter(n => /\.model$/i.test(n));
+    if (!models.length) throw new Error('3MF senza modello');
+    const objs = new Map(); let build = [], sc = 1;
+    const attr = (s, k) => { const m = s.match(new RegExp('\\b' + k + '="([^"]*)"')); return m ? m[1] : null; };
+    const parseM = s => { if (!s) return [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]; const v = s.trim().split(/\s+/).map(Number); return v.length === 12 ? v : [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]; };
+    // composizione: prima a, poi b (convenzione 3MF a vettore riga: p' = p·M)
+    const comp = (a, b) => { const r = []; for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) { let v = i === 3 ? b[9 + j] : 0; for (let k = 0; k < 3; k++) v += (i < 3 ? a[i * 3 + k] : a[9 + k]) * b[k * 3 + j]; r.push(v); } return r; };
+    const apply = (m, p) => [p[0] * m[0] + p[1] * m[3] + p[2] * m[6] + m[9], p[0] * m[1] + p[1] * m[4] + p[2] * m[7] + m[10], p[0] * m[2] + p[1] * m[5] + p[2] * m[8] + m[11]];
+    for (const n of models) {
+      const xml = new TextDecoder().decode(await z.read(n));
+      const unit = (xml.match(/<model[^>]*\bunit="([a-z]+)"/i) || [])[1];
+      if (unit) sc = { micron: 1e-3, millimeter: 1, centimeter: 10, inch: 25.4, foot: 304.8, meter: 1000 }[unit] || 1;
+      const ro = /<object\b([^>]*)>([\s\S]*?)<\/object>/g; let m;
+      while ((m = ro.exec(xml))) {
+        const id = attr(m[1], 'id'), name = attr(m[1], 'name'), body = m[2], o = { name, v: [], t: [], comps: [] };
+        let k; const rv = /<vertex\s[^>]*?x="([^"]+)"[^>]*?y="([^"]+)"[^>]*?z="([^"]+)"/g;
+        while ((k = rv.exec(body))) o.v.push([+k[1], +k[2], +k[3]]);
+        const rt = /<triangle\s[^>]*?v1="(\d+)"[^>]*?v2="(\d+)"[^>]*?v3="(\d+)"/g;
+        while ((k = rt.exec(body))) o.t.push([+k[1], +k[2], +k[3]]);
+        const rc = /<component\b([^>]*)\/?>/g;
+        while ((k = rc.exec(body))) o.comps.push({ id: attr(k[1], 'objectid'), m: parseM(attr(k[1], 'transform')) });
+        objs.set(id, o);
+      }
+      const ri = /<item\b([^>]*)\/?>/g;
+      while ((m = ri.exec(xml))) build.push({ id: attr(m[1], 'objectid'), m: parseM(attr(m[1], 'transform')) });
+    }
+    if (!build.length) build = [...objs.keys()].filter(id => objs.get(id).t.length).map(id => ({ id, m: parseM(null) }));
+    const out = [], triName = [], names = [];
+    const emit = (id, M, inherited, depth) => {
+      const o = objs.get(id); if (!o || depth > 16) return;
+      const nm = o.name || inherited;
+      let ni = -1; if (nm) { ni = names.indexOf(nm); if (ni < 0) { names.push(nm); ni = names.length - 1; } }
+      for (const [a, b, c] of o.t) { for (const vi of [a, b, c]) out.push(...apply(M, o.v[vi]).map(x => x * sc)); triName.push(ni); }
+      for (const cp of o.comps) emit(cp.id, comp(cp.m, M), nm, depth + 1);
+    };
+    for (const it of build) emit(it.id, it.m, null, 0);
+    if (!out.length) throw new Error('3MF senza triangoli');
+    const soup = new Float32Array(out);
+    soup.triName = new Int32Array(triName); soup.names = names;
+    return soup;
   }
 
   async function parseFile(name, buf) {
@@ -174,9 +230,10 @@
       if (id === undefined) { id = V.length / 3; map.set(key, id); V.push(x, y, z); }
       return id;
     };
+    const keptName = [];   // [v1.1.0] nome sorgente dei triangoli conservati
     for (let i = 0; i < soup.length; i += 9) {
       const a = vid(soup[i], soup[i + 1], soup[i + 2]), b = vid(soup[i + 3], soup[i + 4], soup[i + 5]), c = vid(soup[i + 6], soup[i + 7], soup[i + 8]);
-      if (a !== b && b !== c && a !== c) Tl.push(a, b, c);   // scarta triangoli degeneri
+      if (a !== b && b !== c && a !== c) { Tl.push(a, b, c); if (soup.triName) keptName.push(soup.triName[i / 9]); }   // scarta triangoli degeneri
     }
     const Vf = new Float64Array(V), T = new Uint32Array(Tl), nT = T.length / 3, nV = Vf.length / 3;
     const P = i => [Vf[3 * i], Vf[3 * i + 1], Vf[3 * i + 2]];
@@ -217,7 +274,17 @@
     // volume con segno (teorema della divergenza) — utile per verifiche
     let vol = 0, area = 0;
     for (let t = 0; t < nT; t++) { const a = P(T[3 * t]), b = P(T[3 * t + 1]), c = P(T[3 * t + 2]); vol += dot(a, cross(b, c)) / 6; area += A[t]; }
-    return { V: Vf, T, N, A, C, nT, nV, E0, E1, ET, triEdge, nb, comp, nComp, open, nonManifold, bbox: [mn, mx], diag, volume: vol, area, P };
+    // [v1.1.0] nome per corpo: nome più frequente tra i suoi triangoli
+    let triName = null, compNames = null;
+    if (soup.triName && soup.names) {
+      triName = new Int32Array(keptName); compNames = [];
+      const cnt = [...Array(nComp)].map(() => new Map());
+      for (let t = 0; t < nT; t++) if (triName[t] >= 0) cnt[comp[t]].set(triName[t], (cnt[comp[t]].get(triName[t]) || 0) + 1);
+      cnt.forEach((m, c) => { let best = -1, bn = 0; for (const [k, v] of m) if (v > bn) { bn = v; best = k; } compNames[c] = best >= 0 ? soup.names[best] : null; });
+      // nomi ripetuti (più corpi nello stesso oggetto): suffisso _2, _3…
+      const seen = new Map(); compNames = compNames.map(n => { if (!n) return n; const k = (seen.get(n) || 0) + 1; seen.set(n, k); return k > 1 ? n + '_' + k : n; });
+    }
+    return { V: Vf, T, N, A, C, nT, nV, E0, E1, ET, triEdge, nb, comp, nComp, open, nonManifold, bbox: [mn, mx], diag, volume: vol, area, P, triName, names: soup.names || null, compNames };
   }
 
   // ======================= 3. FITTING DI PRIMITIVE =======================
@@ -319,7 +386,7 @@
   }
 
   // ====================== 4. RICONOSCIMENTO SUPERFICI ======================
-  // opts: { tol (mm), angle (gradi), cylinders, spheres }
+  // opts: { tol (mm), angle (gradi), cylinders, spheres, cones, tori, threads, nurbs, snap }  [v1.1.0: aggiunti cones..snap]
   function segment(M, opts) {
     const tol = opts.tol, cosA = Math.cos(opts.angle * Math.PI / 180), sinA = Math.sin(opts.angle * Math.PI / 180);
     const nT = M.nT, face = new Int32Array(nT).fill(-1), regions = [];
@@ -329,6 +396,63 @@
     const mark = new Int32Array(nT).fill(-1); let stamp = 0;   // marcatura temporanea senza riallocare
     const vertsOK = (t, f) => { for (let k = 0; k < 3; k++) if (f(M.P(M.T[3 * t + k])) > tol) return false; return true; };
     const vertsOKt = (t, f, tl) => { for (let k = 0; k < 3; k++) if (f(M.P(M.T[3 * t + k])) > tl) return false; return true; };
+
+    // ---- 4-00. [v1.1.0 2026-10-06] PRE-PASSO FILETTATURE: i fianchi di un filetto sono patch lisce
+    //      lunghe ed elicoidali; se una patch supera il test dell'elica si raccolgono tutti i triangoli
+    //      connessi nella fascia radiale [rmin, rmax] dello stesso asse (prima delle primitive, perché
+    //      strisce di elicoide sembrano cilindri/coni)
+    if (opts.threads !== false) {
+      const cos25 = Math.cos(25 * Math.PI / 180), visited = new Uint8Array(nT);
+      for (let s0 = 0; s0 < nT; s0++) {
+        if (visited[s0] || face[s0] >= 0) continue;
+        const patch = [s0]; visited[s0] = 1;
+        for (let qi = 0; qi < patch.length; qi++) { const t = patch[qi]; for (let j = 0; j < 3; j++) { const u = M.nb[3 * t + j]; if (u >= 0 && !visited[u] && face[u] < 0 && cosDih(t, u) > cos25) { visited[u] = 1; patch.push(u); } } }
+        if (patch.length < 200) continue;
+        const th = detectThread(M, patch, []);
+        if (!th) continue;
+        // fascia del filetto: triangoli connessi con vertici nel range radiale e assiale del fianco
+        const inBand = t => { for (let k = 0; k < 3; k++) { const d = sub(M.P(M.T[3 * t + k]), th.origin), h = dot(d, th.axis), rho = len(sub(d, mul(th.axis, h))); if (rho < th.rmin - 2 * tol - 0.05 * (th.rmax - th.rmin) || rho > th.rmax + 2 * tol + 0.05 * (th.rmax - th.rmin)) return false; } return true; };
+        const reg = [], inR = new Uint8Array(nT); const st = patch.filter(inBand);
+        for (const t of st) inR[t] = 1;
+        while (st.length) { const t = st.pop(); reg.push(t); for (let j = 0; j < 3; j++) { const u = M.nb[3 * t + j]; if (u >= 0 && !inR[u] && face[u] < 0 && inBand(u)) { inR[u] = 1; st.push(u); } } }
+        const full = detectThread(M, reg, [{ axis: th.axis, origin: th.origin }]) || th;
+        const id = regions.length;
+        regions.push(Object.assign({ id, type: 'thread', tris: reg }, full));
+        for (const t of reg) { face[t] = id; visited[t] = 1; }
+      }
+    }
+
+    // ---- 4-0. [v1.1.0 2026-10-06] PRE-PASSO NURBS: patch lisce (diedri < 25°) senza grandi zone piane
+    //      che nessuna primitiva descrive -> superficie B-spline intera (evita mosaici di cilindri/sfere
+    //      "accidentali" su superfici organiche)
+    if (opts.nurbs !== false) {
+      const cos25 = Math.cos(25 * Math.PI / 180), visited = new Uint8Array(nT);
+      for (let s0 = 0; s0 < nT; s0++) {
+        if (visited[s0] || face[s0] >= 0) continue;
+        const patch = [s0]; visited[s0] = 1;
+        for (let qi = 0; qi < patch.length; qi++) { const t = patch[qi]; for (let j = 0; j < 3; j++) { const u = M.nb[3 * t + j]; if (u >= 0 && !visited[u] && face[u] < 0 && cosDih(t, u) > cos25) { visited[u] = 1; patch.push(u); } } }
+        if (patch.length < 50) continue;
+        // area del più grande gruppo complanare (normali entro 0,5°)
+        const inP = new Set(patch), cl = new Uint8Array(nT); let tot = 0, big = 0;
+        for (const t of patch) tot += M.A[t];
+        for (const t of patch) {
+          if (cl[t]) continue; let a = 0; const st = [t]; cl[t] = 1;
+          while (st.length) { const x = st.pop(); a += M.A[x]; for (let j = 0; j < 3; j++) { const u = M.nb[3 * x + j]; if (u >= 0 && inP.has(u) && !cl[u] && dot(Nv(u), Nv(t)) > Math.cos(0.5 * Math.PI / 180)) { cl[u] = 1; st.push(u); } } }
+          big = Math.max(big, a);
+        }
+        if (big > 0.15 * tot) continue;
+        // se una primitiva descrive tutta la patch, la lasciamo agli stadi successivi
+        const pv = verticesOf(M, patch);
+        const sp = fitSphere(pv); if (sp && sp.maxErr <= tol) continue;
+        const cy = fitCylinder(M, patch, norm(axisFromNormals(M, patch)[0].vec)); if (cy && cy.maxErr <= tol) continue;
+        const cn = fitCone(M, patch); if (cn && cn.maxErr <= tol) continue;
+        const T = fitTorus(M, patch); if (T && T.maxErr <= tol) continue;
+        const B = fitBSpline(M, patch, tol); if (!B) continue;
+        const id = regions.length;
+        regions.push({ id, type: 'bspline', tris: patch, nc: B.nc, cp: B.cp, segs: B.segs, err: B.maxErr, normal: B.normal });
+        for (const t of patch) face[t] = id;
+      }
+    }
 
     // ---- 4a-bis. SFERE (prima dei cilindri: una striscia di sfera può sembrare un cilindro) ----
     // seme = triangolo con vicini "morbidi"; crescita libera fino a 12 triangoli, poi fit e vincolo |d-r|<=tol
@@ -387,6 +511,115 @@
       }
     }
 
+    // ---- 4a-quater. [v1.1.0 2026-10-06] TORI (raccordi su spigoli circolari), prima di coni e cilindri:
+    //      i loro anelli/meridiani sembrerebbero coni o cilindri. Seme solo su zone a doppia curvatura.
+    if (opts.tori !== false) {
+      const torTried = new Uint8Array(nT);
+      for (let s = 0; s < nT; s++) {
+        if (face[s] >= 0 || torTried[s]) continue;
+        let soft = 0; for (let j = 0; j < 3; j++) { const u = M.nb[3 * s + j]; if (u >= 0 && face[u] < 0) { const cd = cosDih(s, u); if (cd < Math.cos(0.3 * Math.PI / 180) && cd > maxStep) soft++; } }
+        if (soft < 2) continue;
+        const grow = (T, tolG, lim) => {
+          stamp++; const reg = [s]; mark[s] = stamp;
+          for (let qi = 0; qi < reg.length && reg.length < lim; qi++) {
+            const t = reg[qi];
+            for (let j = 0; j < 3; j++) {
+              const u = M.nb[3 * t + j];
+              if (u < 0 || face[u] >= 0 || mark[u] === stamp) continue;
+              if (cosDih(t, u) < maxStep) continue;
+              if (T && !vertsOKt(u, p => Math.abs(torusDist(T, p)), tolG)) continue;
+              mark[u] = stamp; reg.push(u);
+            }
+          }
+          return reg;
+        };
+        let reg = grow(null, 0, 48);
+        for (const t of reg) torTried[t] = 1;
+        if (reg.length < 24) continue;
+        // doppia curvatura: le normali devono coprire due direzioni (esclude piani, cilindri, coni)
+        const ev = axisFromNormals(M, reg), tot = ev[0].val + ev[1].val + ev[2].val;
+        if (!(ev[0].val / tot > 2e-4)) continue;
+        let T = fitTorus(M, reg);
+        const okT = T => T && T.maxErr <= tol && T.r > tol && T.R > T.r + tol && T.R < M.diag * 2 && T.r < M.diag * 0.5;
+        if (!okT(T)) continue;
+        for (let it = 0; it < 6; it++) {
+          const r2 = grow(T, 3 * tol, Infinity), f2 = fitTorus(M, r2);
+          if (!f2) break;
+          const stable = r2.length === reg.length; reg = r2; T = f2; if (stable) break;
+        }
+        reg = reg.filter(t => vertsOKt(t, p => Math.abs(torusDist(T, p)), tol));
+        if (reg.length < 24 || !okT(T)) continue;
+        for (const t of reg) torTried[t] = 1;
+        let out = 0;
+        for (const t of reg) { const p = [M.C[3 * t], M.C[3 * t + 1], M.C[3 * t + 2]], d = sub(p, T.center), h = dot(d, T.axis), q = add(T.center, mul(norm(sub(d, mul(T.axis, h))), T.R)); out += M.A[t] * dot(Nv(t), sub(p, q)); }
+        const id = regions.length;
+        regions.push({ id, type: 'torus', tris: reg, center: T.center, axis: T.axis, R: T.R, r: T.r, err: T.maxErr, outward: out >= 0 });
+        for (const t of reg) face[t] = id;
+      }
+    }
+
+    // ---- 4a-ter. [v1.1.0 2026-10-06] CONI (prima dei cilindri: strisce di cono sembrano cilindri corti) (smussi, svasature): crescita libera 12 triangoli,
+    //      fit, ri-crescita iterativa con vincolo 3·tol e refit (come per le sfere) ----
+    if (opts.cones !== false) {
+      const coneTried = new Uint8Array(nT);
+      for (let s = 0; s < nT; s++) {
+        if (face[s] >= 0 || coneTried[s]) continue;
+        let soft = 0; for (let j = 0; j < 3; j++) { const u = M.nb[3 * s + j]; if (u >= 0 && face[u] < 0) { const cd = cosDih(s, u); if (cd < Math.cos(0.3 * Math.PI / 180) && cd > maxStep) soft++; } }
+        if (soft < 1) continue;
+        coneTried[s] = 1;
+        const grow = (cn, tolG, lim) => {
+          stamp++; const reg = [s]; mark[s] = stamp;
+          for (let qi = 0; qi < reg.length && reg.length < lim; qi++) {
+            const t = reg[qi];
+            for (let j = 0; j < 3; j++) {
+              const u = M.nb[3 * t + j];
+              if (u < 0 || face[u] >= 0 || mark[u] === stamp) continue;
+              if (cosDih(t, u) < maxStep) continue;
+              if (cn && !vertsOKt(u, p => coneDist(cn, p), tolG)) continue;
+              mark[u] = stamp; reg.push(u);
+            }
+          }
+          return reg;
+        };
+        let reg = grow(null, 0, 12);
+        if (reg.length < 6) continue;
+        let cn = fitCone(M, reg);
+        const okCone = c => c && c.maxErr <= tol && c.alpha > 2 * Math.PI / 180 && c.alpha < 88 * Math.PI / 180;
+        if (!okCone(cn)) continue;
+        for (let it = 0; it < 6; it++) {
+          const r2 = grow(cn, 3 * tol, Infinity), f2 = fitCone(M, r2);
+          if (!f2) break;
+          const stable = r2.length === reg.length; reg = r2; cn = f2; if (stable) break;
+        }
+        reg = reg.filter(t => vertsOKt(t, p => coneDist(cn, p), tol));
+        if (reg.length < 4) continue;
+        for (const t of reg) coneTried[t] = 1;
+        cn = fitCone(M, reg);
+        if (!okCone(cn)) continue;
+        if (fitPlane(verticesOf(M, reg)).maxErr <= tol) continue;
+        // ≥3 orientazioni di facetta attorno all'asse
+        const u0 = perp(cn.axis), v0 = cross(cn.axis, u0);
+        const angs = reg.map(t => Math.atan2(dot(Nv(t), v0), dot(Nv(t), u0))).sort((a, b) => a - b);
+        let clusters = 1; for (let i = 1; i < angs.length; i++) if (angs[i] - angs[i - 1] > 0.5 * Math.PI / 180) clusters++;
+        if (clusters < 3) continue;
+        // anti-toro: il bordo non deve proseguire in modo morbido su triangoli liberi fuori dal cono
+        {
+          const inReg = new Set(reg); let bl = 0, smooth = 0;
+          for (const t of reg) for (let j = 0; j < 3; j++) {
+            const u = M.nb[3 * t + j]; if (u >= 0 && inReg.has(u)) continue;
+            const l = len(sub(M.P(M.T[3 * t + (j + 1) % 3]), M.P(M.T[3 * t + j]))); bl += l;
+            const fu = u >= 0 ? face[u] : -2, freeN = fu === -1 || (fu >= 0 && (regions[fu].type === 'cylinder' || regions[fu].type === 'cone'));
+            if (u >= 0 && freeN && cosDih(t, u) > maxStep && !vertsOK(u, p => coneDist(cn, p))) smooth += l;
+          }
+          if (bl > 0 && smooth > 0.3 * bl) continue;
+        }
+        let out = 0; for (const t of reg) { const d = sub([M.C[3 * t], M.C[3 * t + 1], M.C[3 * t + 2]], cn.apex); out += M.A[t] * dot(Nv(t), sub(d, mul(cn.axis, dot(d, cn.axis)))); }
+        const id = regions.length;
+        regions.push({ id, type: 'cone', tris: reg, apex: cn.apex, axis: cn.axis, alpha: cn.alpha, hmin: cn.hmin, hmax: cn.hmax, err: cn.maxErr, outward: out >= 0 });
+        for (const t of reg) face[t] = id;
+      }
+    }
+
     // ---- 4a. CILINDRI: seme = coppia di triangoli adiacenti con diedro "morbido" ----
     if (opts.cylinders) {
       for (let s = 0; s < nT; s++) for (let k = 0; k < 3; k++) {
@@ -420,6 +653,8 @@
         if (reg.length < 4) continue;
         const ax = norm(axisFromNormals(M, reg)[0].vec), c = fitCylinder(M, reg, ax);
         if (!c || c.maxErr > tol || c.radius > M.diag * 20) continue;
+        // [v1.1.0 2026-10-06] tutte le normali ⟂ all'asse finale (esclude strisce di coni/tori)
+        if (reg.some(t => Math.abs(dot(Nv(t), ax)) > 2 * sinA)) continue;
         if (fitPlane(verticesOf(M, reg)).maxErr <= tol) continue;     // è in realtà un piano
         // almeno 3 orientazioni di facetta distinte attorno all'asse
         const u0 = perp(ax), v0 = cross(ax, u0);
@@ -429,6 +664,7 @@
         // [2026-10-05 17:55] rifiuta "falsi cilindri" (strisce di toro/freeform): se oltre metà dei bordi
         // di estremità (⟂ asse) prosegue in modo morbido su triangoli liberi non ⟂ asse, la superficie
         // continua a curvare in un'altra direzione -> non è un cilindro.
+        /* [2026-10-06 13:22] versione precedente (soglia unica su entrambe le estremità insieme):
         {
           const inReg = new Set(reg); let endLen = 0, smoothLen = 0;
           for (const t of reg) for (let j = 0; j < 3; j++) {
@@ -436,9 +672,31 @@
             const a = M.P(M.T[3 * t + j]), b = M.P(M.T[3 * t + (j + 1) % 3]), dv = sub(b, a), l = len(dv);
             if (Math.abs(dot(dv, ax)) / l > 0.5) continue;                       // bordo laterale, non di estremità
             endLen += l;
-            if (u >= 0 && face[u] < 0 && cosDih(t, u) > maxStep && Math.abs(dot(Nv(u), ax)) > 3 * sinA) smoothLen += l;
+            // [2026-10-06] versione precedente: contava solo vicini non assegnati (face[u] < 0)
+            // if (u >= 0 && face[u] < 0 && cosDih(t, u) > maxStep && Math.abs(dot(Nv(u), ax)) > 3 * sinA) smoothLen += l;
+            // ora anche vicini già riconosciuti come cilindri/coni (anelli adiacenti di un toro)
+            const fu = u >= 0 ? face[u] : -2, freeN = fu === -1 || (fu >= 0 && (regions[fu].type === 'cylinder' || regions[fu].type === 'cone'));
+            if (u >= 0 && freeN && cosDih(t, u) > maxStep && Math.abs(dot(Nv(u), ax)) > 3 * sinA) smoothLen += l;
           }
           if (endLen > 0 && smoothLen > 0.5 * endLen) continue;
+        }
+        */
+        // [v1.1.0] estremità valutate separatamente: un cilindro con raccordo tangente a UN capo è valido;
+        // se entrambi i capi proseguono morbidi ed è basso rispetto al raggio è un anello di toro
+        {
+          const inReg = new Set(reg), hc = (() => { let a = 0; for (const p of verticesOf(M, reg)) a += dot(sub(p, c.origin), ax); return a / verticesOf(M, reg).length; })();
+          const endL = [0, 0], smL = [0, 0];
+          for (const t of reg) for (let j = 0; j < 3; j++) {
+            const u = M.nb[3 * t + j]; if (u >= 0 && inReg.has(u)) continue;
+            const a = M.P(M.T[3 * t + j]), b = M.P(M.T[3 * t + (j + 1) % 3]), dv = sub(b, a), l = len(dv);
+            if (Math.abs(dot(dv, ax)) / l > 0.5) continue;
+            const side = dot(sub(mul(add(a, b), 0.5), c.origin), ax) > hc ? 1 : 0;
+            endL[side] += l;
+            const fu = u >= 0 ? face[u] : -2, freeN = fu === -1 || (fu >= 0 && (regions[fu].type === 'cylinder' || regions[fu].type === 'cone'));
+            if (u >= 0 && freeN && cosDih(t, u) > maxStep && Math.abs(dot(Nv(u), ax)) > 3 * sinA) smL[side] += l;
+          }
+          const sm0 = endL[0] > 0 && smL[0] > 0.5 * endL[0], sm1 = endL[1] > 0 && smL[1] > 0.5 * endL[1];
+          if (sm0 && sm1 && c.height < c.radius) continue;
         }
         // verso: normali uscenti dall'asse (albero) o entranti (foro)
         let out = 0; for (const t of reg) { const d = sub([M.C[3 * t], M.C[3 * t + 1], M.C[3 * t + 2]], c.origin); out += M.A[t] * dot(Nv(t), sub(d, mul(ax, dot(d, ax)))); }
@@ -476,6 +734,57 @@
       if (!sharp) r.type = 'freeform';
     }
 
+    // ---- 4d. [v1.1.0 2026-10-06] MACCHIE FREEFORM -> filettature, tori, B-spline ----
+    // candidate = freeform o piccoli piani (≤6 triangoli) con un vicino "morbido" non analitico
+    {
+      const isCand = r => r.type === 'freeform' || (r.type === 'plane' && r.tris.length <= 6 && r.tris.some(t => [0, 1, 2].some(j => { const u = M.nb[3 * t + j]; return u >= 0 && face[u] !== r.id && ['freeform', 'plane'].includes(regions[face[u]].type) && cosDih(t, u) > Math.cos(20 * Math.PI / 180); })));
+      const cand = regions.map(isCand), seen = new Uint8Array(regions.length);
+      const blobs = [];
+      for (const r0 of regions) {
+        if (!cand[r0.id] || seen[r0.id]) continue;
+        const blob = [], st = [r0.id]; seen[r0.id] = 1;
+        while (st.length) {
+          const r = regions[st.pop()]; blob.push(r);
+          for (const t of r.tris) for (let j = 0; j < 3; j++) { const u = M.nb[3 * t + j]; if (u < 0) continue; const f = face[u]; if (cand[f] && !seen[f]) { seen[f] = 1; st.push(f); } }
+        }
+        if (blob.length > 1 || blob[0].type === 'freeform') blobs.push(blob);
+      }
+      const replace = (blob, reg) => {
+        const tris = blob.flatMap(r => r.tris), id = regions.length;
+        reg.id = id; reg.tris = tris; regions.push(reg);
+        for (const r of blob) { r.type = 'merged'; r.tris = []; }
+        for (const t of tris) face[t] = id;
+      };
+      for (const blob of blobs) {
+        const tris = blob.flatMap(r => r.tris); if (tris.length < 8) continue;
+        // filettatura: assi candidati dalle regioni di rivoluzione confinanti
+        if (opts.threads !== false && tris.length >= 40) {
+          const inB = new Set(tris), ax = [];
+          for (const t of tris) for (let j = 0; j < 3; j++) { const u = M.nb[3 * t + j]; if (u < 0 || inB.has(u)) continue; const r = regions[face[u]]; if ((r.type === 'cylinder' || r.type === 'cone') && !ax.some(a => a.src === r)) ax.push({ src: r, axis: r.axis, origin: r.type === 'cylinder' ? r.origin : r.apex }); }
+          const th = detectThread(M, tris, ax.map(a => ({ axis: a.axis, origin: a.origin })));
+          if (th) { replace(blob, Object.assign({ type: 'thread' }, th)); continue; }
+        }
+        // toro
+        if (opts.tori !== false && tris.length >= 12) {
+          const T = fitTorus(M, tris);
+          if (T && T.maxErr <= tol && T.r > tol && T.R > T.r && T.R < M.diag * 2 && T.r < M.diag * 0.5) {  // [2026-10-06] limiti R/r più stretti (prima: T.R < M.diag * 20)
+            const ev = axisFromNormals(M, tris), tot = ev[0].val + ev[1].val + ev[2].val;
+            if (ev[0].val / tot > 1e-4) {
+              let out = 0;
+              for (const t of tris) { const p = [M.C[3 * t], M.C[3 * t + 1], M.C[3 * t + 2]], d = sub(p, T.center), h = dot(d, T.axis), q = add(T.center, mul(norm(sub(d, mul(T.axis, h))), T.R)); out += M.A[t] * dot(Nv(t), sub(p, q)); }
+              replace(blob, { type: 'torus', center: T.center, axis: T.axis, R: T.R, r: T.r, err: T.maxErr, outward: out >= 0 });
+              continue;
+            }
+          }
+        }
+        // B-spline (NURBS non razionale) come campo di altezze
+        if (opts.nurbs !== false && tris.length >= 16) {
+          const B = fitBSpline(M, tris, tol);
+          if (B) replace(blob, { type: 'bspline', nc: B.nc, cp: B.cp, segs: B.segs, err: B.maxErr, normal: B.normal });
+        }
+      }
+    }
+
     /* [2026-10-05 17:25] Versione precedente 4d (sfere da macchie freeform), sostituita da 4a-bis:
     // ---- 4d. SFERE: gruppi connessi di freeform che stanno su una sfera ----
     if (opts.spheres) {
@@ -510,6 +819,9 @@
           if (Math.abs(dot(a.axis, b.axis)) < cosA || Math.abs(a.radius - b.radius) > tol || a.outward !== b.outward) return false;
           const d = sub(b.origin, a.origin); return len(sub(d, mul(a.axis, dot(d, a.axis)))) <= tol;
         }
+        // [v1.1.0 2026-10-06] coni (stesso apice, asse, angolo) e tori (stesso centro, asse, R, r)
+        if (a.type === 'cone') return Math.abs(dot(a.axis, b.axis)) > cosA && len(sub(a.apex, b.apex)) <= tol && Math.abs(a.alpha - b.alpha) < 1e-3 && a.outward === b.outward;
+        if (a.type === 'torus') return Math.abs(dot(a.axis, b.axis)) > cosA && len(sub(a.center, b.center)) <= tol && Math.abs(a.R - b.R) <= tol && Math.abs(a.r - b.r) <= tol && a.outward === b.outward;
         return false;
       };
       let changed = true;
@@ -522,8 +834,51 @@
           for (const x of B.tris) face[x] = A.id;
           A.tris = A.tris.concat(B.tris); B.type = 'merged'; B.tris = [];
           if (A.type === 'cylinder') { const c = fitCylinder(M, A.tris, A.axis); if (c) { A.origin = c.origin; A.height = c.height; } }
+          if (A.type === 'cone') { const c = fitCone(M, A.tris); if (c) { A.hmin = c.hmin; A.hmax = c.hmax; } }
           changed = true; break;
         }
+      }
+    }
+
+    // ---- 4f. [v1.1.0 2026-10-06] SNAP AI VALORI NOMINALI ("beautify") ----
+    // ogni modifica è accettata solo se i vertici restano entro la tolleranza
+    if (opts.snap) {
+      const AX = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+      const snapDir = d => { for (const a of AX) { const c = dot(d, a); if (Math.abs(c) > cosA) return mul(a, Math.sign(c)); } return null; };
+      const roundTo = (x, q) => Math.round(x / q) * q;
+      const live = regions.filter(r => r.type !== 'merged');
+      for (const r of live) {
+        const pts = verticesOf(M, r.tris);
+        if (r.type === 'plane') {
+          const n2 = snapDir(r.normal); if (!n2) continue;
+          const d = pts.reduce((s, p) => s + dot(p, n2), 0) / pts.length;
+          if (pts.every(p => Math.abs(dot(p, n2) - d) <= tol)) { r.normal = n2; r.origin = add(sub(r.origin, mul(n2, dot(r.origin, n2))), mul(n2, d)); r.snapped = true; }
+        } else if (r.type === 'cylinder') {
+          let axis = snapDir(r.axis) || r.axis, origin = r.origin;
+          if (axis !== r.axis) { const c = fitCylinder(M, r.tris, axis); if (c && c.maxErr <= tol) origin = c.origin; else axis = r.axis; }
+          let rad = r.radius;
+          for (const q of [0.1, 0.05, 0.01]) { const d2 = roundTo(2 * rad, q) / 2; if (cylErr(M, r.tris, axis, origin, d2) <= tol) { rad = d2; break; } }
+          if (axis !== r.axis || rad !== r.radius) { r.axis = axis; r.origin = origin; r.radius = rad; r.err = cylErr(M, r.tris, axis, origin, rad); r.snapped = true; }
+        } else if (r.type === 'sphere') {
+          for (const q of [0.1, 0.05, 0.01]) { const r2 = roundTo(2 * r.radius, q) / 2; if (pts.every(p => Math.abs(len(sub(p, r.center)) - r2) <= tol)) { r.radius = r2; r.snapped = true; break; } }
+        } else if (r.type === 'cone') {
+          // semi-angolo a 0,5° (es. svasature 45°, 41°)
+          const a2 = roundTo(r.alpha * 180 / Math.PI, 0.5) * Math.PI / 180, ax2 = snapDir(r.axis) || r.axis;
+          const test = { apex: r.apex, axis: ax2, alpha: a2 };
+          if (pts.every(p => coneDist(test, p) <= tol)) { r.alpha = a2; r.axis = ax2; r.snapped = true; }
+        } else if (r.type === 'torus') {
+          const ax2 = snapDir(r.axis) || r.axis;
+          for (const q of [0.1, 0.05, 0.01]) { const T = { center: r.center, axis: ax2, R: r.R, r: roundTo(r.r, q) }; if (T.r > 0 && pts.every(p => Math.abs(torusDist(T, p)) <= tol)) { r.r = T.r; r.axis = ax2; r.snapped = true; break; } }
+        }
+      }
+      // cilindri coassiali: stessa retta d'asse (media) se entro tolleranza
+      const cyls = live.filter(r => r.type === 'cylinder');
+      for (let i = 0; i < cyls.length; i++) for (let j = i + 1; j < cyls.length; j++) {
+        const a = cyls[i], b = cyls[j]; if (Math.abs(dot(a.axis, b.axis)) < cosA) continue;
+        const d = sub(b.origin, a.origin), off = sub(d, mul(a.axis, dot(d, a.axis)));
+        if (len(off) > tol || len(off) === 0) continue;
+        const o2 = add(b.origin, mul(off, -1));   // proietta b sulla retta di a
+        if (cylErr(M, b.tris, a.axis, o2, b.radius) <= tol) { b.origin = o2; b.axis = dot(a.axis, b.axis) > 0 ? a.axis : mul(a.axis, -1); b.snapped = true; }
       }
     }
 
@@ -532,9 +887,441 @@
     live.forEach((r, i) => { remap[r.id] = i; r.id = i; });
     for (let t = 0; t < nT; t++) face[t] = remap[face[t]];
     // statistiche
-    const stats = { plane: 0, cylinder: 0, sphere: 0, freeform: 0, freeformTris: 0 };
+    // [2026-10-06] versione precedente (solo piano/cilindro/sfera/freeform):
+    // const stats = { plane: 0, cylinder: 0, sphere: 0, freeform: 0, freeformTris: 0 };
+    const stats = { plane: 0, cylinder: 0, cone: 0, sphere: 0, torus: 0, thread: 0, bspline: 0, freeform: 0, freeformTris: 0 };
     for (const r of live) { stats[r.type]++; if (r.type === 'freeform') stats.freeformTris += r.tris.length; }
     return { face, regions: live, stats };
+  }
+
+  // ================= 3-bis. [v1.1.0 2026-10-06] NUOVE PRIMITIVE E UTILITÀ =================
+
+  // ---- Cono: asse = autovettore minimo della covarianza delle normali (centrate),
+  //      apice = punto comune ai piani delle facette (minimi quadrati), semi-angolo da ρ = h·tanα
+  function fitCone(M, tris) {
+    let m = [0, 0, 0], at = 0;
+    for (const t of tris) { const a = M.A[t]; at += a; for (let k = 0; k < 3; k++) m[k] += a * M.N[3 * t + k]; }
+    m = mul(m, 1 / at);
+    const S = [0, 0, 0, 0, 0, 0], G = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], g = [0, 0, 0];
+    for (const t of tris) {
+      const a = M.A[t], n = [M.N[3 * t], M.N[3 * t + 1], M.N[3 * t + 2]], d = sub(n, m);
+      S[0] += a * d[0] * d[0]; S[1] += a * d[0] * d[1]; S[2] += a * d[0] * d[2]; S[3] += a * d[1] * d[1]; S[4] += a * d[1] * d[2]; S[5] += a * d[2] * d[2];
+      const c = [M.C[3 * t], M.C[3 * t + 1], M.C[3 * t + 2]], nc = dot(n, c);
+      for (let i = 0; i < 3; i++) { g[i] += a * n[i] * nc; for (let j = 0; j < 3; j++) G[i][j] += a * n[i] * n[j]; }
+    }
+    let axis = norm(eigSym3(S)[0].vec);
+    const apex = solve(G, g); if (!apex) return null;
+    const pts = verticesOf(M, tris);
+    let sh = 0; for (const p of pts) sh += dot(sub(p, apex), axis);
+    if (sh < 0) axis = mul(axis, -1);
+    let srh = 0, shh = 0;
+    const hr = pts.map(p => { const d = sub(p, apex), h = dot(d, axis), r = len(sub(d, mul(axis, h))); srh += r * h; shh += h * h; return [h, r]; });
+    if (!(shh > 0)) return null;
+    const alpha = Math.atan(srh / shh);
+    const ca = Math.cos(alpha), sa = Math.sin(alpha);
+    let maxErr = 0, hmin = Infinity, hmax = -Infinity;
+    for (const [h, r] of hr) { maxErr = Math.max(maxErr, Math.abs(r * ca - h * sa)); hmin = Math.min(hmin, h); hmax = Math.max(hmax, h); }
+    if (hmin < -1e-9) maxErr = Math.max(maxErr, -hmin);     // punti oltre l'apice: non è un cono semplice
+    return { apex, axis, alpha, maxErr, hmin, hmax };
+  }
+  const coneDist = (cn, p) => { const d = sub(p, cn.apex), h = dot(d, cn.axis), r = len(sub(d, mul(cn.axis, h))); return Math.abs(r * Math.cos(cn.alpha) - h * Math.sin(cn.alpha)); };
+
+  // ---- Toro: distanza = sqrt((ρ-R)² + h²) - r ----
+  const torusDist = (T, p) => { const d = sub(p, T.center), h = dot(d, T.axis), rho = len(sub(d, mul(T.axis, h))); return Math.hypot(rho - T.R, h) - T.r; };
+  // Fit: inizializzazione dai "centri del tubo" (centroide - s·r·normale) per alcuni r candidati,
+  // poi Levenberg-Marquardt su 7 parametri (centro, asse 2 gdl, R, r) con Jacobiano numerico.
+  function fitTorus(M, tris) {
+    const ptsAll = verticesOf(M, tris); if (ptsAll.length < 12) return null;
+    const step = Math.max(1, Math.floor(ptsAll.length / 2500)), pts = ptsAll.filter((_, i) => i % step === 0);
+    // raggi di curvatura locali tra facette adiacenti della regione
+    const inR = new Set(tris), radii = [];
+    for (const t of tris) for (let j = 0; j < 3; j++) {
+      const u = M.nb[3 * t + j]; if (u < t || !inR.has(u)) continue;
+      const th = Math.acos(Math.min(1, dot([M.N[3 * t], M.N[3 * t + 1], M.N[3 * t + 2]], [M.N[3 * u], M.N[3 * u + 1], M.N[3 * u + 2]])));
+      if (th < 1e-3) continue;
+      radii.push(len(sub([M.C[3 * t], M.C[3 * t + 1], M.C[3 * t + 2]], [M.C[3 * u], M.C[3 * u + 1], M.C[3 * u + 2]])) / th);
+    }
+    if (radii.length < 4) return null;
+    radii.sort((a, b) => a - b);
+    const cands = [...new Set([0.05, 0.15, 0.3, 0.5, 0.8].map(q => radii[Math.floor(q * (radii.length - 1))]))];
+    const err = T => { let e = 0, mx = 0; for (const p of pts) { const d = torusDist(T, p); e += d * d; mx = Math.max(mx, Math.abs(d)); } return { rms: Math.sqrt(e / pts.length), mx }; };
+    let best = null;
+    for (const r of cands) for (const s of [1, -1]) {
+      const q = tris.map(t => sub([M.C[3 * t], M.C[3 * t + 1], M.C[3 * t + 2]], mul([M.N[3 * t], M.N[3 * t + 1], M.N[3 * t + 2]], s * r)));
+      const pl = fitPlane(q), u = perp(pl.normal), w = cross(pl.normal, u);
+      const c = fitCircle2D(q.map(x => [dot(sub(x, pl.origin), u), dot(sub(x, pl.origin), w)])); if (!c) continue;
+      const T = { center: add(pl.origin, add(mul(u, c.cx), mul(w, c.cy))), axis: pl.normal, R: c.r, r };
+      const e = err(T); if (!best || e.rms < best.e.rms) best = { T, e };
+    }
+    if (!best) return null;
+    // Levenberg-Marquardt
+    let T = best.T, cur = best.e.rms, lam = 1e-3;
+    const pack = T => [T.center[0], T.center[1], T.center[2], 0, 0, T.R, T.r];
+    const unpack = (x, a0) => { const e1 = perp(a0), e2 = cross(a0, e1); return { center: [x[0], x[1], x[2]], axis: norm(add(a0, add(mul(e1, x[3]), mul(e2, x[4])))), R: x[5], r: x[6] }; };
+    for (let it = 0; it < 25; it++) {
+      const a0 = T.axis, x0 = pack(T), f0 = pts.map(p => torusDist(T, p));
+      const J = pts.map(() => new Float64Array(7)), hstep = M.diag * 1e-6;
+      for (let k = 0; k < 7; k++) {
+        const x = x0.slice(); const hk = k === 3 || k === 4 ? 1e-6 : hstep; x[k] += hk;
+        const Tk = unpack(x, a0); pts.forEach((p, i) => { J[i][k] = (torusDist(Tk, p) - f0[i]) / hk; });
+      }
+      const A = [...Array(7)].map(() => Array(7).fill(0)), b = Array(7).fill(0);
+      pts.forEach((_, i) => { for (let a = 0; a < 7; a++) { b[a] -= J[i][a] * f0[i]; for (let c = 0; c < 7; c++) A[a][c] += J[i][a] * J[i][c]; } });
+      let improved = false;
+      for (let tries = 0; tries < 6 && !improved; tries++) {
+        const Al = A.map((r, i) => r.map((v, j) => (i === j ? v * (1 + lam) + 1e-12 : v)));
+        const dlt = solve(Al, b); if (!dlt) { lam *= 10; continue; }
+        const Tn = unpack(x0.map((v, i) => v + dlt[i]), a0);
+        const e = err(Tn);
+        if (e.rms < cur) { T = Tn; cur = e.rms; lam = Math.max(1e-7, lam / 5); improved = true; } else lam *= 10;
+      }
+      if (!improved || cur < 1e-9) break;
+    }
+    if (T.r < 0) T.r = -T.r;
+    let mx = 0; for (const p of ptsAll) mx = Math.max(mx, Math.abs(torusDist(T, p)));
+    return { center: T.center, axis: T.axis, R: T.R, r: T.r, maxErr: mx };
+  }
+
+  // ---- Errore massimo di un cilindro dato (per snap/editing) ----
+  function cylErr(M, tris, axis, origin, r) {
+    let mx = 0; for (const p of verticesOf(M, tris)) { const d = sub(p, origin), h = dot(d, axis); mx = Math.max(mx, Math.abs(len(sub(d, mul(axis, h))) - r)); }
+    return mx;
+  }
+
+  // ---- Tabella filettature metriche ISO (diametro nominale, passi grosso/fini) ----
+  const ISO_METRIC = [[1, [0.25, 0.2]], [1.2, [0.25, 0.2]], [1.6, [0.35, 0.2]], [2, [0.4, 0.25]], [2.5, [0.45, 0.35]], [3, [0.5, 0.35]], [3.5, [0.6, 0.35]],
+    [4, [0.7, 0.5]], [5, [0.8, 0.5]], [6, [1, 0.75]], [8, [1.25, 1, 0.75]], [10, [1.5, 1.25, 1, 0.75]], [12, [1.75, 1.5, 1.25, 1]], [14, [2, 1.5, 1.25, 1]],
+    [16, [2, 1.5, 1]], [18, [2.5, 2, 1.5, 1]], [20, [2.5, 2, 1.5, 1]], [22, [2.5, 2, 1.5, 1]], [24, [3, 2, 1.5, 1]], [27, [3, 2, 1.5, 1]], [30, [3.5, 3, 2, 1.5, 1]],
+    [33, [3.5, 3, 2, 1.5]], [36, [4, 3, 2, 1.5]], [42, [4.5, 4, 3, 2, 1.5]], [48, [5, 4, 3, 2, 1.5]]];
+  const PITCHES = [...new Set(ISO_METRIC.flatMap(x => x[1]))].sort((a, b) => a - b);
+
+  // ---- Filettatura: assi candidati, profilo radiale ρ∈[rmin,rmax], periodicità elicoidale delle creste ----
+  function detectThread(M, tris, axesCand) {
+    const pts = verticesOf(M, tris); if (pts.length < 40) return null;
+    // candidati asse: quelli forniti (regioni coassiali vicine) + PCA dei vertici + normali
+    const c0 = mul(pts.reduce((s, p) => add(s, p), [0, 0, 0]), 1 / pts.length), S = [0, 0, 0, 0, 0, 0];
+    for (const p of pts) { const d = sub(p, c0); S[0] += d[0] * d[0]; S[1] += d[0] * d[1]; S[2] += d[0] * d[2]; S[3] += d[1] * d[1]; S[4] += d[1] * d[2]; S[5] += d[2] * d[2]; }
+    const ev = eigSym3(S);
+    const cands = [...axesCand, { axis: ev[2].vec }, { axis: ev[0].vec }, { axis: axisFromNormals(M, tris)[0].vec }];
+    let best = null;
+    for (const cd of cands) {
+      const a = norm(cd.axis), u = perp(a), w = cross(a, u);
+      let ctr;
+      if (cd.origin) ctr = cd.origin;
+      else { const c = fitCircle2D(pts.map(p => [dot(p, u), dot(p, w)])); if (!c) continue; ctr = add(mul(u, c.cx), mul(w, c.cy)); }
+      const data = pts.map(p => { const d = sub(p, ctr), h = dot(d, a), q = sub(d, mul(a, h)); return { h, rho: len(q), th: Math.atan2(dot(q, w), dot(q, u)) }; });
+      const rs = data.map(x => x.rho).sort((x, y) => x - y);
+      const rmin = rs[Math.floor(0.02 * (rs.length - 1))], rmax = rs[Math.floor(0.98 * (rs.length - 1))], depth = rmax - rmin;
+      if (!(depth > 0) || depth > 0.35 * rmax) continue;
+      const crest = data.filter(x => x.rho > rmax - 0.2 * depth);
+      const hs = data.map(x => x.h), span = Math.max(...hs) - Math.min(...hs);
+      // passo: massimizza la concentrazione della fase (h - P·θ/2π) mod P sulle creste (destra e sinistra)
+      for (const P of PITCHES) {
+        if (span < 1.5 * P || depth < 0.3 * P || depth > 1.0 * P) continue;
+        for (const hand of [1, -1]) {
+          let cs = 0, sn = 0;
+          for (const x of crest) { const ph = 2 * Math.PI * (x.h - hand * P * x.th / (2 * Math.PI)) / P; cs += Math.cos(ph); sn += Math.sin(ph); }
+          const R = Math.hypot(cs, sn) / crest.length;
+          if (!best || R > best.R) best = { R, P, hand, axis: a, origin: ctr, rmin, rmax, depth, span };
+        }
+      }
+    }
+    if (!best || best.R < 0.85) return null;
+    // filetto interno o esterno dal verso delle normali
+    let out = 0; for (const t of tris) { const d = sub([M.C[3 * t], M.C[3 * t + 1], M.C[3 * t + 2]], best.origin); out += M.A[t] * dot([M.N[3 * t], M.N[3 * t + 1], M.N[3 * t + 2]], sub(d, mul(best.axis, dot(d, best.axis)))); }
+    const internal = out < 0, major = 2 * best.rmax;
+    let label = `Ø${major.toFixed(2)} P${best.P}`, nominal = null;
+    for (const [d, ps] of ISO_METRIC) if (Math.abs(d - major) <= Math.max(0.25, 0.12 * d) && ps.some(p => Math.abs(p - best.P) < 1e-9)) {
+      if (!nominal || Math.abs(d - major) < Math.abs(nominal - major)) nominal = d;
+    }
+    if (nominal) label = `M${nominal}` + (ISO_METRIC.find(x => x[0] === nominal)[1][0] === best.P ? '' : `x${best.P}`);
+    // [2026-10-06 13:38] prima: hand 'destro'/'sinistro' e ' interno' nel label (testo italiano nel core)
+    return { axis: best.axis, origin: best.origin, pitch: best.P, hand: best.hand > 0 ? 'R' : 'L', rmin: best.rmin, rmax: best.rmax, length: best.span, internal, label, nominal, score: best.R };
+  }
+
+  // ---- Superficie B-spline bicubica come campo di altezze sopra il piano medio della regione ----
+  function fitBSpline(M, tris, tol) {
+    const pts = verticesOf(M, tris); if (pts.length < 16) return null;
+    const pl = fitPlane(pts);
+    let n = pl.normal, mn = [0, 0, 0];
+    for (const t of tris) mn = add(mn, mul([M.N[3 * t], M.N[3 * t + 1], M.N[3 * t + 2]], M.A[t]));
+    if (dot(mn, n) < 0) n = mul(n, -1);
+    for (const t of tris) if (dot([M.N[3 * t], M.N[3 * t + 1], M.N[3 * t + 2]], n) < 0.25) return null;   // non è un campo di altezze
+    const e1 = perp(n), e2 = cross(n, e1);
+    const uvh = pts.map(p => { const d = sub(p, pl.origin); return [dot(d, e1), dot(d, e2), dot(d, n)]; });
+    let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+    for (const [u, v] of uvh) { u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); }
+    const pad = 0.02 * Math.max(u1 - u0, v1 - v0); u0 -= pad; u1 += pad; v0 -= pad; v1 += pad;
+    // base B-spline cubica uniforme bloccata con nc punti di controllo
+    const basis = (nc, t) => {   // t in [0,1] -> pesi non nulli
+      const segs = nc - 3, x = Math.min(segs - 1e-9, Math.max(0, t * segs)), k = Math.floor(x);
+      const knots = [0, 0, 0, 0]; for (let i = 1; i < segs; i++) knots.push(i); knots.push(segs, segs, segs, segs);
+      const N = Array(nc).fill(0);
+      // Cox-de Boor
+      let Nk = knots.slice(0, -1).map((kv, i) => (x >= kv && x < knots[i + 1] ? 1 : 0));
+      for (let p = 1; p <= 3; p++) {
+        const nx = [];
+        for (let i = 0; i < knots.length - 1 - p; i++) {
+          const a = knots[i + p] - knots[i], b = knots[i + p + 1] - knots[i + 1];
+          nx.push((a > 0 ? (x - knots[i]) / a * Nk[i] : 0) + (b > 0 ? (knots[i + p + 1] - x) / b * Nk[i + 1] : 0));
+        }
+        Nk = nx;
+      }
+      for (let i = 0; i < nc; i++) N[i] = Nk[i];
+      return N;
+    };
+    for (const nc of [6, 8, 10, 12]) {
+      const K = nc * nc, A = [...Array(K)].map(() => new Float64Array(K)), b = new Float64Array(K);
+      const rows = uvh.map(([u, v, h]) => ({ Bu: basis(nc, (u - u0) / (u1 - u0)), Bv: basis(nc, (v - v0) / (v1 - v0)), h }));
+      for (const { Bu, Bv, h } of rows) {
+        const idx = [], val = [];
+        for (let i = 0; i < nc; i++) if (Bu[i]) for (let j = 0; j < nc; j++) if (Bv[j]) { idx.push(i * nc + j); val.push(Bu[i] * Bv[j]); }
+        for (let a = 0; a < idx.length; a++) { b[idx[a]] += val[a] * h; for (let c = 0; c < idx.length; c++) A[idx[a]][idx[c]] += val[a] * val[c]; }
+      }
+      // regolarizzazione (differenze seconde) per i punti di controllo non vincolati dai dati
+      const lam = 1e-6 * (rows.length / K);
+      for (let i = 0; i < nc; i++) for (let j = 0; j < nc; j++) for (const [di, dj] of [[1, 0], [0, 1]]) {
+        if (i + 2 * di >= nc || j + 2 * dj >= nc) continue;
+        const ids = [i * nc + j, (i + di) * nc + j + dj, (i + 2 * di) * nc + j + 2 * dj], w = [1, -2, 1];
+        for (let a = 0; a < 3; a++) for (let c = 0; c < 3; c++) A[ids[a]][ids[c]] += lam * w[a] * w[c];
+      }
+      const z = solve(A.map(r => Array.from(r)), Array.from(b)); if (!z) continue;
+      let mx = 0;
+      for (const { Bu, Bv, h } of rows) { let s = 0; for (let i = 0; i < nc; i++) if (Bu[i]) for (let j = 0; j < nc; j++) s += Bu[i] * Bv[j] * z[i * nc + j]; mx = Math.max(mx, Math.abs(s - h)); }
+      if (mx <= tol) {
+        // punti di controllo 3D (ascisse di Greville -> precisione lineare in u,v)
+        const segs = nc - 3, knots = [0, 0, 0, 0]; for (let i = 1; i < segs; i++) knots.push(i); knots.push(segs, segs, segs, segs);
+        const grev = [...Array(nc).keys()].map(i => (knots[i + 1] + knots[i + 2] + knots[i + 3]) / 3 / segs);
+        const cp = [...Array(nc).keys()].map(i => [...Array(nc).keys()].map(j => add(pl.origin, add(add(mul(e1, u0 + grev[i] * (u1 - u0)), mul(e2, v0 + grev[j] * (v1 - v0))), mul(n, z[i * nc + j])))));
+        return { nc, cp, segs, maxErr: mx, normal: n };
+      }
+    }
+    return null;
+  }
+
+  // ---- Riparazione: chiude i buchi (anelli di bordo aperti) con ear clipping sul piano medio ----
+  function fillHoles(M) {
+    const half = new Map();
+    for (let t = 0; t < M.nT; t++) for (let k = 0; k < 3; k++) {
+      const e = M.triEdge[3 * t + k]; if (M.ET[e].length !== 1) continue;
+      const a = M.T[3 * t + k], b = M.T[3 * t + (k + 1) % 3];
+      if (!half.has(a)) half.set(a, []); half.get(a).push(b);
+    }
+    const used = new Set(), loops = [];
+    for (const [a0, outs] of half) for (const b0 of outs) {
+      const key0 = a0 + '_' + b0; if (used.has(key0)) continue;
+      const loop = [a0]; let a = a0, b = b0, ok = true;
+      while (true) {
+        used.add(a + '_' + b);
+        if (b === a0) break;
+        loop.push(b);
+        const nx = (half.get(b) || []).find(c => !used.has(b + '_' + c));
+        if (nx === undefined || loop.length > 100000) { ok = false; break; }
+        a = b; b = nx;
+      }
+      if (ok && loop.length >= 3) loops.push(loop);
+    }
+    /* [2026-10-06 13:24] versione precedente: ogni anello riempito da solo (anelli annidati complanari,
+       es. faccia superiore con fori, venivano chiusi due volte -> solidi sovrapposti)
+    const added = [];
+    for (const loop of loops) {
+      const poly = loop.slice().reverse();                // verso opposto al bordo esistente
+      const P3 = poly.map(v => M.P(v)), pl = fitPlane(P3), u = perp(pl.normal), w = cross(pl.normal, u);
+      const P2 = P3.map(p => [dot(p, u), dot(p, w)]);
+      let area = 0; for (let i = 0; i < P2.length; i++) { const p = P2[i], q = P2[(i + 1) % P2.length]; area += p[0] * q[1] - q[0] * p[1]; }
+      const sgn = Math.sign(area) || 1, idx = [...poly.keys()], tris = [];
+      const crs = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+      let guard = 0;
+      while (idx.length > 3 && guard++ < 100000) {
+        let clipped = false;
+        for (let i = 0; i < idx.length; i++) {
+          const ia = idx[(i + idx.length - 1) % idx.length], ib = idx[i], ic = idx[(i + 1) % idx.length];
+          const A = P2[ia], B = P2[ib], C = P2[ic];
+          if (crs(A, B, C) * sgn <= 1e-14) continue;
+          let inside = false;
+          for (const j of idx) { if (j === ia || j === ib || j === ic) continue; const p = P2[j]; if (crs(A, B, p) * sgn > 0 && crs(B, C, p) * sgn > 0 && crs(C, A, p) * sgn > 0) { inside = true; break; } }
+          if (inside) continue;
+          tris.push([poly[ia], poly[ib], poly[ic]]); idx.splice(i, 1); clipped = true; break;
+        }
+        if (!clipped) break;
+      }
+      if (idx.length === 3) { tris.push(idx.map(i => poly[i])); added.push(...tris); }
+      else {                                              // poligono non semplice: ventaglio dal baricentro
+        const c = mul(P3.reduce((s, p) => add(s, p), [0, 0, 0]), 1 / P3.length);
+        for (let i = 0; i < poly.length; i++) added.push([c, poly[i], poly[(i + 1) % poly.length]]);
+      }
+    }
+    */
+    // [v1.1.0] anelli complanari annidati -> poligono con fori (ponte foro-contorno), poi ear clipping
+    const info = loops.map(loop => {
+      const poly = loop.slice().reverse(), P3 = poly.map(v => M.P(v)), pl = fitPlane(P3);
+      return { poly, P3, pl };
+    });
+    const added = [], usedAsHole = new Set(), crs = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    const area2 = P => { let a = 0; for (let i = 0; i < P.length; i++) { const p = P[i], q = P[(i + 1) % P.length]; a += p[0] * q[1] - q[0] * p[1]; } return a / 2; };
+    const inside = (pt, P) => { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const a = P[i], b = P[j]; if ((a[1] > pt[1]) !== (b[1] > pt[1]) && pt[0] < (b[0] - a[0]) * (pt[1] - a[1]) / (b[1] - a[1]) + a[0]) c = !c; } return c; };
+    const segX = (p1, p2, q1, q2) => { const d1 = crs(q1, q2, p1), d2 = crs(q1, q2, p2), d3 = crs(p1, p2, q1), d4 = crs(p1, p2, q2); return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0)) && Math.abs(d1) > 1e-12 && Math.abs(d2) > 1e-12; };
+    info.forEach(o => { o.n = o.pl.normal; o.u = perp(o.n); o.w = cross(o.n, o.u); o.P2 = o.P3.map(p => [dot(p, o.u), dot(p, o.w)]); o.area = Math.abs(area2(o.P2)); });
+    const order = [...info.keys()].sort((a, b) => info[b].area - info[a].area);
+    for (const oi of order) {
+      if (usedAsHole.has(oi)) continue;
+      const o = info[oi];
+      // fori: anelli più piccoli, complanari (entro tol), contenuti nel contorno
+      const holes = [];
+      if (o.pl.maxErr <= 1e-3 * M.diag) for (const hi of order) {
+        if (hi === oi || usedAsHole.has(hi) || info[hi].area >= o.area) continue;
+        const h = info[hi];
+        if (Math.abs(dot(h.n, o.n)) < 0.999 || h.P3.some(p => Math.abs(dot(sub(p, o.pl.origin), o.n)) > 1e-3 * M.diag)) continue;
+        const h2 = h.P3.map(p => [dot(p, o.u), dot(p, o.w)]);
+        if (!inside(h2[0], o.P2)) continue;
+        holes.push({ hi, P2: h2, poly: h.poly }); usedAsHole.add(hi);
+      }
+      // contorno con verso positivo, fori con verso negativo (rispetto alla base u,w di o)
+      let poly = o.poly.slice(), P2 = o.P2.slice();
+      const sgnO = Math.sign(area2(P2)) || 1;
+      for (const h of holes.sort((a, b) => Math.max(...b.P2.map(p => p[0])) - Math.max(...a.P2.map(p => p[0])))) {
+        let hp = h.poly.slice(), h2 = h.P2.slice();
+        if (Math.sign(area2(h2)) === sgnO) { hp.reverse(); h2.reverse(); }
+        const k = h2.reduce((bi, p, i) => (p[0] > h2[bi][0] ? i : bi), 0), hk = h2[k];
+        // vertice del contorno visibile più vicino
+        const cand = [...P2.keys()].sort((a, b) => Math.hypot(P2[a][0] - hk[0], P2[a][1] - hk[1]) - Math.hypot(P2[b][0] - hk[0], P2[b][1] - hk[1]));
+        let bi = cand[0];
+        for (const i of cand) {
+          let ok = true;
+          for (let j = 0; j < P2.length && ok; j++) { const a = P2[j], b2 = P2[(j + 1) % P2.length]; if (j === i || (j + 1) % P2.length === i) continue; if (segX(hk, P2[i], a, b2)) ok = false; }
+          for (let j = 0; j < h2.length && ok; j++) { const a = h2[j], b2 = h2[(j + 1) % h2.length]; if (j === k || (j + 1) % h2.length === k) continue; if (segX(hk, P2[i], a, b2)) ok = false; }
+          if (ok) { bi = i; break; }
+        }
+        const hRot = hp.slice(k).concat(hp.slice(0, k)), h2Rot = h2.slice(k).concat(h2.slice(0, k));
+        poly = poly.slice(0, bi + 1).concat(hRot, [hp[k], poly[bi]], poly.slice(bi + 1));
+        P2 = P2.slice(0, bi + 1).concat(h2Rot, [h2[k], P2[bi]], P2.slice(bi + 1));
+      }
+      // ear clipping
+      const sgn = Math.sign(area2(P2)) || 1, idx = [...poly.keys()], tris = [];
+      let guard = 0;
+      while (idx.length > 3 && guard++ < 200000) {
+        let clipped = false;
+        for (let i = 0; i < idx.length; i++) {
+          const ia = idx[(i + idx.length - 1) % idx.length], ib = idx[i], ic = idx[(i + 1) % idx.length];
+          const A = P2[ia], B = P2[ib], C = P2[ic];
+          if (crs(A, B, C) * sgn <= 1e-14) continue;
+          let ins = false;
+          for (const j of idx) {
+            if (j === ia || j === ib || j === ic) continue; const p = P2[j];
+            if ((p[0] === A[0] && p[1] === A[1]) || (p[0] === B[0] && p[1] === B[1]) || (p[0] === C[0] && p[1] === C[1])) continue;   // vertici duplicati del ponte
+            if (crs(A, B, p) * sgn >= 0 && crs(B, C, p) * sgn >= 0 && crs(C, A, p) * sgn >= 0) { ins = true; break; }
+          }
+          if (ins) continue;
+          tris.push([poly[ia], poly[ib], poly[ic]]); idx.splice(i, 1); clipped = true; break;
+        }
+        if (!clipped) break;
+      }
+      if (idx.length === 3) { tris.push(idx.map(i => poly[i])); added.push(...tris); }
+      else {                                               // fallback: ventaglio dal baricentro (solo contorno)
+        const c = mul(o.P3.reduce((s2, p) => add(s2, p), [0, 0, 0]), 1 / o.P3.length);
+        for (let i = 0; i < o.poly.length; i++) added.push([c, o.poly[i], o.poly[(i + 1) % o.poly.length]]);
+        for (const h of holes) usedAsHole.delete(h.hi);
+      }
+    }
+    // nuova "zuppa" di triangoli: originali + chiusure (i vertici possono essere indici o punti)
+    const nT = M.nT + added.length, soup = new Float32Array(nT * 9);
+    for (let t = 0; t < M.nT; t++) for (let k = 0; k < 3; k++) soup.set(M.P(M.T[3 * t + k]), t * 9 + k * 3);
+    added.forEach((tr, i) => tr.forEach((v, k) => soup.set(typeof v === 'number' ? M.P(v) : v, (M.nT + i) * 9 + k * 3)));
+    if (M.triName) { soup.triName = new Int32Array(nT); soup.triName.set(M.triName); for (let i = M.nT; i < nT; i++) soup.triName[i] = -1; soup.names = M.names; }
+    return { soup, holes: loops.length, added: added.length };
+  }
+
+  // ---- [v1.1.0 2026-10-06] Statistiche per tipo ----
+  function regionStats(regions) {
+    const stats = { plane: 0, cylinder: 0, cone: 0, sphere: 0, torus: 0, thread: 0, bspline: 0, freeform: 0, freeformTris: 0 };
+    for (const r of regions) { stats[r.type]++; if (r.type === 'freeform') stats.freeformTris += r.tris.length; }
+    return stats;
+  }
+
+  // ---- [v1.1.0 2026-10-06] Editing manuale: unisce le regioni ids e le rifitta come primitiva `as`
+  //      ('auto' prova piano, cilindro, cono, sfera, toro, B-spline). maxErr = scarto massimo accettato.
+  function editRegions(M, seg, ids, as, maxErr) {
+    const set = new Set(ids), tris = seg.regions.filter(r => set.has(r.id)).flatMap(r => r.tris);
+    if (!tris.length) throw new Error('err.empty');
+    // connessione: le regioni unite devono formare un'unica zona
+    const inT = new Set(tris), seen = new Set([tris[0]]), st = [tris[0]];
+    while (st.length) { const t = st.pop(); for (let j = 0; j < 3; j++) { const u = M.nb[3 * t + j]; if (u >= 0 && inT.has(u) && !seen.has(u)) { seen.add(u); st.push(u); } } }
+    if (seen.size !== tris.length) throw new Error('err.notConnected');
+    const Nv = t => [M.N[3 * t], M.N[3 * t + 1], M.N[3 * t + 2]], pts = verticesOf(M, tris);
+    const outward = (center, axisDir) => { let o = 0; for (const t of tris) { const p = [M.C[3 * t], M.C[3 * t + 1], M.C[3 * t + 2]]; let d = sub(p, center); if (axisDir) d = sub(d, mul(axisDir, dot(d, axisDir))); o += M.A[t] * dot(Nv(t), d); } return o >= 0; };
+    const tryFit = type => {
+      if (type === 'plane') { const pl = fitPlane(pts); let n = pl.normal, m = [0, 0, 0]; for (const t of tris) m = add(m, Nv(t)); if (dot(m, n) < 0) n = mul(n, -1); return { type, err: pl.maxErr, normal: n, origin: pl.origin }; }
+      if (type === 'cylinder') { const ax = norm(axisFromNormals(M, tris)[0].vec), c = fitCylinder(M, tris, ax); return c && { type, err: c.maxErr, axis: ax, origin: c.origin, radius: c.radius, height: c.height, outward: outward(c.origin, ax) }; }
+      if (type === 'cone') { const c = fitCone(M, tris); return c && { type, err: c.maxErr, apex: c.apex, axis: c.axis, alpha: c.alpha, hmin: c.hmin, hmax: c.hmax, outward: outward(c.apex, c.axis) }; }
+      if (type === 'sphere') { const c = fitSphere(pts); return c && { type, err: c.maxErr, center: c.center, radius: c.radius, outward: outward(c.center) }; }
+      if (type === 'torus') {
+        const T = fitTorus(M, tris); if (!T) return null;
+        let o = 0; for (const t of tris) { const p = [M.C[3 * t], M.C[3 * t + 1], M.C[3 * t + 2]], d = sub(p, T.center), h = dot(d, T.axis), q = add(T.center, mul(norm(sub(d, mul(T.axis, h))), T.R)); o += M.A[t] * dot(Nv(t), sub(p, q)); }
+        return { type, err: T.maxErr, center: T.center, axis: T.axis, R: T.R, r: T.r, outward: o >= 0 };
+      }
+      if (type === 'bspline') { const B = fitBSpline(M, tris, maxErr); return B && { type, err: B.maxErr, nc: B.nc, cp: B.cp, segs: B.segs, normal: B.normal }; }
+      if (type === 'freeform') return { type, err: 0 };
+      return null;
+    };
+    let reg = null, bestErr = Infinity;
+    if (as === 'auto') {
+      for (const ty of ['plane', 'cylinder', 'cone', 'sphere', 'torus', 'bspline']) { const r = tryFit(ty); if (r && r.err < bestErr) bestErr = r.err; if (r && r.err <= maxErr) { reg = r; break; } }
+    } else { reg = tryFit(as); if (reg) bestErr = reg.err; if (reg && reg.err > maxErr) reg = null; }
+    if (!reg) { const e = new Error('err.fit'); e.best = bestErr; throw e; }
+    // nuova lista regioni: rimuove le unite, aggiunge la nuova in coda, rinumera
+    const regions = seg.regions.filter(r => !set.has(r.id));
+    reg.tris = tris; reg.manual = true; regions.push(reg);
+    regions.forEach((r, i) => { r.id = i; });
+    const face = new Int32Array(M.nT); regions.forEach(r => { for (const t of r.tris) face[t] = r.id; });
+    return { face, regions, stats: regionStats(regions), newId: reg.id };
+  }
+
+  // ---- Caratteristiche: fori passanti/ciechi, profondità; corpi ----
+  function features(M, seg) {
+    const regs = seg ? seg.regions : [];   // [v1.2.0] seg null -> solo corpi
+    const nbr = regs.map(() => new Set());
+    if (seg) for (let t = 0; t < M.nT; t++) for (let j = 0; j < 3; j++) { const u = M.nb[3 * t + j]; if (u >= 0 && seg.face[u] !== seg.face[t]) nbr[seg.face[t]].add(seg.face[u]); }
+    const holes = [];
+    for (const r of regs) {
+      if (r.type !== 'cylinder' || r.outward) continue;
+      // cieco se una regione vicina (fondo piano o punta conica) confina solo con questo cilindro
+      const bottom = [...nbr[r.id]].find(f => nbr[f].size === 1 && nbr[f].has(r.id));
+      let depth = r.height;
+      if (bottom !== undefined && seg.regions[bottom].type === 'cone') {
+        const cn = seg.regions[bottom]; depth += Math.abs(cn.hmax - cn.hmin);
+      }
+      holes.push({ region: r.id, diameter: 2 * r.radius, through: bottom === undefined, depth, axis: r.axis, origin: r.origin, length: r.height });
+    }
+    // corpi: nome, triangoli, chiuso, volume
+    const bodies = [...Array(M.nComp)].map((_, c) => ({ id: c, name: (M.compNames && M.compNames[c]) || 'Body' + (c + 1), nTris: 0, closed: true, volume: 0 }));
+    for (let t = 0; t < M.nT; t++) {
+      const b = bodies[M.comp[t]]; b.nTris++;
+      const a = M.P(M.T[3 * t]), bb = M.P(M.T[3 * t + 1]), c = M.P(M.T[3 * t + 2]); b.volume += dot(a, cross(bb, c)) / 6;
+    }
+    for (let e = 0; e < M.E0.length; e++) if (M.ET[e].length !== 2) for (const t of M.ET[e]) bodies[M.comp[t]].closed = false;
+    return { holes, bodies };
+  }
+
+  // ---- Deviazione: distanza max dei vertici di ogni triangolo dalla superficie della sua regione ----
+  function surfDist(r, p) {
+    switch (r.type) {
+      case 'plane': return Math.abs(dot(sub(p, r.origin), r.normal));
+      case 'cylinder': { const d = sub(p, r.origin), h = dot(d, r.axis); return Math.abs(len(sub(d, mul(r.axis, h))) - r.radius); }
+      case 'sphere': return Math.abs(len(sub(p, r.center)) - r.radius);
+      case 'cone': return coneDist(r, p);
+      case 'torus': return Math.abs(torusDist(r, p));
+      default: return 0;
+    }
+  }
+  function deviation(M, seg) {
+    const dev = new Float32Array(M.nT); let mx = 0;
+    for (let t = 0; t < M.nT; t++) {
+      const r = seg.regions[seg.face[t]]; let d = 0;
+      if (r.type === 'bspline' && r.devTri) d = r.devTri.get(t) || 0;
+      else for (let k = 0; k < 3; k++) d = Math.max(d, surfDist(r, M.P(M.T[3 * t + k])));
+      dev[t] = d; mx = Math.max(mx, d);
+    }
+    return { dev, max: mx };
   }
 
   // ============================ 5. EXPORT STEP ============================
@@ -571,11 +1358,26 @@
     const gctx = E(`(GEOMETRIC_REPRESENTATION_CONTEXT(3)GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((${unc}))GLOBAL_UNIT_ASSIGNED_CONTEXT((${uLen},${uAng},${uSol}))REPRESENTATION_CONTEXT('Context3D','3D context'))`);
 
     // --- id di "faccia B-rep": regioni analitiche intere; freeform = un triangolo per faccia ---
+    /* [2026-10-06] versione precedente: freeform per triangolo, il resto una faccia per regione
     const fid = new Int32Array(M.nT); let nF = 0;
     const faceInfo = [];   // { region, tris }
     for (const r of seg.regions) {
       if (r.type === 'freeform') for (const t of r.tris) { fid[t] = nF++; faceInfo.push({ region: r, tris: [t] }); }
       else { for (const t of r.tris) fid[t] = nF; nF++; faceInfo.push({ region: r, tris: r.tris }); }
+    }
+    */
+    // [v1.1.0] sfaccettate per triangolo: freeform, filettature e regioni chiuse senza bordo
+    // (es. sfera/toro completi: una ADVANCED_FACE richiede almeno un anello); corpi esclusi saltati
+    const bodies = opts.bodies || [];
+    const included = t => !(bodies[M.comp[t]] && bodies[M.comp[t]].include === false);
+    const fid = new Int32Array(M.nT).fill(-1); let nF = 0;
+    const faceInfo = [];   // { region, tris }
+    for (const r of seg.regions) {
+      const tris = r.tris.filter(included); if (!tris.length) continue;
+      let faceted = r.type === 'freeform' || r.type === 'thread';
+      if (!faceted) { const inR = new Set(r.tris); faceted = !r.tris.some(t => [0, 1, 2].some(j => { const u = M.nb[3 * t + j]; return u < 0 || !inR.has(u); })); }
+      if (faceted) for (const t of tris) { fid[t] = nF++; faceInfo.push({ region: r, tris: [t], faceted: true }); }
+      else { for (const t of tris) fid[t] = nF; nF++; faceInfo.push({ region: r, tris }); }
     }
 
     // --- spigoli topologici: spigoli mesh con facce diverse ai due lati (o bordo aperto) ---
@@ -583,6 +1385,7 @@
     const facesKey = e => M.ET[e].map(t => fid[t]).sort((a, b) => a - b).join('_');
     const vEdges = new Map();   // vertice -> spigoli topologici incidenti
     for (let e = 0; e < nE; e++) {
+      if (fid[M.ET[e][0]] < 0) continue;   // [v1.1.0] corpo escluso
       const fs = M.ET[e].map(t => fid[t]);
       if (fs.length !== 2 || fs[0] !== fs[1]) {
         isTopo[e] = 1;
@@ -612,7 +1415,7 @@
     // --- geometria delle catene: LINE, CIRCLE o polilinea B-spline grado 1 ---
     const vtx = new Map();
     const vertexPoint = v => { if (!vtx.has(v)) vtx.set(v, E(`VERTEX_POINT('',${pt(M.P(v))})`)); return vtx.get(v); };
-    const curvedRadii = e => M.ET[e].map(t => faceInfo[fid[t]].region).filter(r => r.type === 'cylinder' || r.type === 'sphere').map(r => r.radius);
+    const curvedRadii = e => M.ET[e].map(t => faceInfo[fid[t]].region).filter(r => r.type === 'cylinder' || r.type === 'sphere').map(r => r.radius);  // (coni gestiti sotto con ctrX/rX)
     const edgeStats = { line: 0, circle: 0, polyline: 0 };
     chains.forEach(ch => {
       const pts = ch.verts.map(v => M.P(v)), p0 = pts[0], pN = pts[pts.length - 1];
@@ -637,12 +1440,27 @@
             let err = 0; for (const p of uniq) err = Math.max(err, Math.abs(len(sub(p, ctr)) - c.r));
             const radii = curvedRadii(ch.edges[0]);
             const supported = uniq.length >= 4 || radii.some(r => Math.abs(r - c.r) <= tol);
+            // [v1.1.0 2026-10-06] se la catena borda un cilindro/cono coassiale usa asse e raggio esatti
+            // della superficie (spigolo coerente con la faccia, anche dopo lo snap)
+            let ctrX = null, rX = null;
+            for (const t of M.ET[ch.edges[0]]) {
+              const rg = faceInfo[fid[t]].region;
+              if ((rg.type === 'cylinder' || rg.type === 'cone') && Math.abs(dot(rg.axis, ax)) > Math.cos(Math.PI / 180)) {
+                const o = rg.type === 'cylinder' ? rg.origin : rg.apex, h = dot(sub(pl.origin, o), rg.axis);
+                const rr = rg.type === 'cylinder' ? rg.radius : h * Math.tan(rg.alpha);
+                if (Math.abs(rr - c.r) <= tol) { ctrX = add(o, mul(rg.axis, h)); rX = rr; }
+              }
+            }
             if (err <= tol && supported) {
               // verso antiorario rispetto all'asse = verso di percorrenza della catena
               let turn = 0; for (let i = 0; i + 1 < pts.length; i++) turn += dot(cross(sub(pts[i], ctr), sub(pts[i + 1], ctr)), ax);
               const zax = turn >= 0 ? ax : mul(ax, -1);
-              const xref = norm(sub(p0, ctr));
-              curve = E(`CIRCLE('',${place(ctr, zax, xref)},${stepNum(c.r)})`); edgeStats.circle++;
+              const cc = ctrX || ctr, rr = rX || c.r;
+              let xref = sub(p0, cc); xref = norm(sub(xref, mul(zax, dot(xref, zax))));
+              curve = E(`CIRCLE('',${place(cc, zax, xref)},${stepNum(rr)})`); edgeStats.circle++;
+              // [2026-10-06] versione precedente:
+              // const xref = norm(sub(p0, ctr));
+              // curve = E(`CIRCLE('',${place(ctr, zax, xref)},${stepNum(c.r)})`); edgeStats.circle++;
             }
           }
         }
@@ -691,12 +1509,25 @@
       });
       let outer = -1; if (r.type === 'plane' && bounds.length) outer = bounds.reduce((bi, b, i) => (b.ar > bounds[bi].ar ? i : bi), 0);
       const fb = bounds.map((b, i) => E(`${i === outer ? 'FACE_OUTER_BOUND' : 'FACE_BOUND'}('',${b.loop},.T.)`));
-      let surf, sense = '.T.';
-      if (r.type === 'plane') surf = E(`PLANE('',${place(r.origin, r.normal, perp(r.normal))})`);
+      let surf, sense = '.T.', fname = '';
+      if (fi.faceted) { const t = fi.tris[0], n = [M.N[3 * t], M.N[3 * t + 1], M.N[3 * t + 2]]; surf = E(`PLANE('',${place(M.P(M.T[3 * t]), n, perp(n))})`); if (r.type === 'thread') fname = 'THREAD ' + r.label; }
+      else if (r.type === 'plane') surf = E(`PLANE('',${place(r.origin, r.normal, perp(r.normal))})`);
+      else if (r.type === 'cone') {   // [v1.1.0] posizione alla quota minima, raggio = h·tanα
+        const h0 = Math.max(0, r.hmin);
+        surf = E(`CONICAL_SURFACE('',${place(add(r.apex, mul(r.axis, h0)), r.axis, perp(r.axis))},${stepNum(h0 * Math.tan(r.alpha))},${stepNum(r.alpha, 12)})`); sense = r.outward ? '.T.' : '.F.';
+      } else if (r.type === 'torus') {
+        surf = E(`TOROIDAL_SURFACE('',${place(r.center, r.axis, perp(r.axis))},${stepNum(r.R)},${stepNum(r.r)})`); sense = r.outward ? '.T.' : '.F.';
+      } else if (r.type === 'bspline') {
+        const rows = r.cp.map(row => '(' + row.map(pt).join(',') + ')').join(',');
+        const mult = [4, ...Array(r.segs - 1).fill(1), 4].join(','), kn = [...Array(r.segs + 1).keys()].map(i => stepNum(i)).join(',');
+        surf = E(`B_SPLINE_SURFACE_WITH_KNOTS('',3,3,(${rows}),.UNSPECIFIED.,.F.,.F.,.F.,(${mult}),(${mult}),(${kn}),(${kn}),.UNSPECIFIED.)`);
+      }
       else if (r.type === 'freeform') { const t = fi.tris[0], n = [M.N[3 * t], M.N[3 * t + 1], M.N[3 * t + 2]]; surf = E(`PLANE('',${place(M.P(M.T[3 * t]), n, perp(n))})`); }
       else if (r.type === 'cylinder') { surf = E(`CYLINDRICAL_SURFACE('',${place(r.origin, r.axis, perp(r.axis))},${stepNum(r.radius)})`); sense = r.outward ? '.T.' : '.F.'; }
       else if (r.type === 'sphere') { surf = E(`SPHERICAL_SURFACE('',${place(r.center, [0, 0, 1], [1, 0, 0])},${stepNum(r.radius)})`); sense = r.outward ? '.T.' : '.F.'; }
-      const af = E(`ADVANCED_FACE('',(${fb.join(',')}),${surf},${sense})`);
+      if (!fi.faceted && r.type === 'cylinder') fname = (r.outward ? 'SHAFT D' : 'HOLE D') + (2 * r.radius).toFixed(3);
+      const af = E(`ADVANCED_FACE(${stepStr(fname)},(${fb.join(',')}),${surf},${sense})`);
+      // [2026-10-06] versione precedente: const af = E(`ADVANCED_FACE('',(${fb.join(',')}),${surf},${sense})`);
       const c = M.comp[fi.tris[0]];
       if (!solidsByComp.has(c)) solidsByComp.set(c, []);
       solidsByComp.get(c).push(af);
@@ -709,8 +1540,10 @@
     let bi = 0;
     for (const [c, faces] of solidsByComp) {
       bi++;
-      if (closedComp[c]) items.push(E(`MANIFOLD_SOLID_BREP(${stepStr('Body' + bi)},${E(`CLOSED_SHELL('',(${faces.join(',')}))`)})`));
-      else surfItems.push(E(`SHELL_BASED_SURFACE_MODEL(${stepStr('Surface' + bi)},(${E(`OPEN_SHELL('',(${faces.join(',')}))`)}))`));
+      // [v1.1.0] nome corpo: scelto dall'utente > nome da 3MF/OBJ > BodyN
+      const bname = (bodies[c] && bodies[c].name) || (M.compNames && M.compNames[c]) || ((closedComp[c] ? 'Body' : 'Surface') + bi);
+      if (closedComp[c]) items.push(E(`MANIFOLD_SOLID_BREP(${stepStr(bname)},${E(`CLOSED_SHELL('',(${faces.join(',')}))`)})`));
+      else surfItems.push(E(`SHELL_BASED_SURFACE_MODEL(${stepStr(bname)},(${E(`OPEN_SHELL('',(${faces.join(',')}))`)}))`));
     }
     const origin = place([0, 0, 0], [0, 0, 1], [1, 0, 0]);
     let rep;
@@ -739,7 +1572,7 @@
     return { M, seg };
   }
 
-  const API = { VERSION, parseFile, parseSTL, parseOBJ, parse3MF, buildMesh, segment, exportSTEP, analyse, fitCylinder, fitSphere, fitPlane };
+  const API = { VERSION, parseFile, parseSTL, parseOBJ, parse3MF, buildMesh, segment, exportSTEP, analyse, fitCylinder, fitSphere, fitPlane, fitCone, fitTorus, fitBSpline, detectThread, fillHoles, features, deviation, surfDist, editRegions, regionStats };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   else root.M2S = API;
 })(typeof self !== 'undefined' ? self : this);

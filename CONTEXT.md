@@ -1,5 +1,5 @@
 # CONTEXT — Mesh2STEP
-Versione documento: 1.0.0 — 2026-10-05 17:10
+Versione documento: 1.3.0 — 2026-10-06 13:45
 
 ## Scopo
 Web app che converte mesh triangolari (STL, OBJ, 3MF) in file STEP con **geometria CAD reale**:
@@ -19,38 +19,54 @@ Nasce come replica clean-room di <https://mesh2solid.thavision.com/> (tha:vision
 | Lingue | DE / EN |
 | Telemetria | contatori anonimi via `sendBeacon('./api/hit')` |
 
-## Architettura di Mesh2STEP
+## Architettura di Mesh2STEP (v1.3.0)
 ```
-index.html ── src/app.js (UI + three.js viewer, modulo ES)
-                 │ postMessage (buffer trasferiti, zero copie)
-                 ▼
-             src/worker.js ── src/core.js (parsing, topologia, riconoscimento, STEP)
+index.html ── src/app.js (UI, viewer three.js, i18n, editing, export, API integrazione)
+   │             │ postMessage (buffer trasferiti, zero copie)
+   │             ▼
+   │         src/worker.js ── src/core.js (parsing, topologia, riconoscimento, editing, riparazione, STEP)
+   ├─ vendor/  three.js 0.169 + OrbitControls (offline)
+   ├─ sw.js + manifest.webmanifest + icons/   (PWA)
+   ├─ dist/    build single-file offline (build.mjs)
+   └─ desktop/ app Windows WebView2 (C#/.NET 8) con i file web incorporati
 ```
 - `core.js` è puro JS senza DOM: gira nel Worker e in Node (test).
-- `dist/` contiene la build single-file (worker incorporato come Blob).
-- Unica dipendenza runtime: three.js 0.169 da jsDelivr.
+- Nessuna dipendenza di rete a runtime.
 
-## Algoritmo (sintesi)
-1. **Saldatura** vertici su griglia 1e-6 × diagonale; scarto triangoli degeneri.
-2. **Sfere** (prima dei cilindri): seme con vicini "morbidi", 12 triangoli → fit, poi ri-crescita iterativa
-   con vincolo |d−R| ≤ 3·tol e refit; filtro finale a tol; normali devono coprire 2 direzioni.
-3. **Cilindri**: seme = coppia adiacente con diedro 0,3°–40°; asse = n₁×n₂, cerchio dai 3 punti proiettati;
-   crescita con normale ⟂ asse e vertici entro tol; refit (asse = autovettore minimo di Σ A·nnᵀ).
-   Validazione: ≥3 orientazioni di facetta, non planare, estremità non "morbide" (anti-toro).
-4. **Piani**: seme = triangolo più grande; crescita per angolo e distanza dal piano.
-5. **Freeform**: piani di 1–2 triangoli circondati da zone morbide.
-6. **Fusione** di regioni adiacenti con stessa primitiva.
-7. **STEP**: spigoli topologici = spigoli mesh tra facce diverse; catene tra vertici "angolo";
-   ogni catena → `LINE` / `CIRCLE` / B-spline lineare; anelli orientati dai triangoli (CCW = esterno).
+## Integrazione con altre app (es. 3D STL Multipart Maker)
+- `w = window.open('https://chicco83.github.io/mesh2step/')`; attendere il messaggio `{type:'mesh2step:ready'}`; poi
+  `w.postMessage({ type: 'mesh2step:open', name: 'pezzo.stl', buffer: arrayBuffer }, '*')`.
+- Oppure `…/mesh2step/?url=<URL del file con CORS>`.
+- App Windows: `Mesh2STEP.exe percorso\pezzo.stl`.
+
+## Algoritmo (sintesi, ordine degli stadi)
+1. **Saldatura** vertici su griglia 1e-6 × diagonale; scarto triangoli degeneri; nomi sorgente per triangolo.
+2. **Pre-passo filettature**: patch lisce (diedri < 25°) ≥ 200 triangoli; test dell'elica sulle creste
+   (concentrazione di fase di h − P·θ/2π per i passi ISO); poi tutti i triangoli connessi nella fascia radiale.
+3. **Pre-passo B-spline**: patch lisce ≥ 50 triangoli senza grandi zone piane (< 15 %) che nessuna primitiva
+   descrive per intero → superficie bicubica (campo di altezze sul piano medio, griglia 6–12, regolarizzata).
+4. **Sfere**: seme "morbido", 12 triangoli → fit + Gauss-Newton, ri-crescita a 3·tol e refit, filtro a tol.
+5. **Tori**: seme a doppia curvatura (autovalore minimo delle normali > 2e-4), 48 triangoli, fit LM a 7
+   parametri inizializzato dai centri del tubo, ri-crescita iterativa.
+6. **Coni**: come le sfere; asse dalle normali, apice ai minimi quadrati sui piani delle facette; anti-toro.
+7. **Cilindri**: seme su coppia di facette; normali ⟂ asse finale; ≥3 orientazioni; estremità valutate
+   separatamente (un capo con raccordo tangente è ammesso).
+8. **Piani**, **freeform** (1–2 triangoli in zone morbide), macchie freeform residue → filetto/toro/B-spline.
+9. **Fusione** di regioni adiacenti con stessa primitiva; **snap** opzionale ai valori nominali.
+10. **STEP**: spigoli topologici tra facce diverse, catene tra vertici "angolo", `LINE` / `CIRCLE` (coerente con
+    cilindro/cono adiacente) / B-spline lineare; anelli orientati dai triangoli.
 
 ## Decisioni
 - Nome diverso ("Mesh2STEP") e codice scritto da zero: nessun asset/codice/testo dell'originale.
-- JS invece di Rust/WASM per la v1: più semplice da mantenere; 68k triangoli in < 1 s.
+- JS invece di Rust/WASM: 205 k triangoli in 3 s, sufficiente (rivalutare oltre 1 M).
 - Tolleranza STEP (`UNCERTAINTY_MEASURE`) = tolleranza di riconoscimento.
-- Freeform esportato sfaccettato (un `PLANE` per triangolo): sempre valido, nessuna approssimazione NURBS.
+- Filettature esportate sfaccettate (geometria fedele) con nome faccia `THREAD Mx`: la sostituzione col cilindro
+  nominale cambierebbe i bordi delle facce vicine.
+- Regioni chiuse senza bordo (sfera/toro completi) sfaccettate: `ADVANCED_FACE` richiede almeno un anello.
+- Editing manuale: le regioni unite devono essere contigue (una faccia = una zona connessa).
+- App Windows con WebView2 (stessa scelta di 3D STL Multipart Maker), file web come risorse incorporate.
 
-## Limiti noti v1.0.0
-- Coni, tori, filettature non riconosciuti (finiscono in freeform/piani).
-- Trasformazioni `<build><item transform>` del 3MF ignorate.
-- Nessuna riparazione mesh (buchi → STEP superficie aperta).
-- three.js da CDN: la build "portabile" richiede comunque internet per il viewer.
+## Limiti noti v1.3.0
+- Filettature non sostituite dal cilindro nominale; B-spline solo per zone "campo di altezze".
+- Riparazione solo dei buchi (non di spigoli non-manifold o auto-intersezioni).
+- Exe Windows compilato ma non ancora provato su Windows.

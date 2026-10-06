@@ -1,48 +1,35 @@
-# MIGLIORIE PROPOSTE — Mesh2STEP
-Versione documento: 1.0.0 — 2026-10-05 17:10
+# MIGLIORIE — Mesh2STEP
+Versione documento: 1.3.0 — 2026-10-06 13:45
+<!-- [2026-10-06 13:45] versione precedente 1.0.0 (2026-10-05 17:10): elenco proposte tutte "da fare";
+     aggiornato con lo stato di realizzazione. -->
 
-Priorità: **A** = alto valore / sforzo contenuto · **B** = alto valore / sforzo alto · **C** = rifinitura.
-Stato: ✅ fatto in v1.0.0 · ⬜ da fare.
+Stato: ✅ fatto · 🟡 parziale · ⏸️ valutato e rinviato.
 
-## Già incluse in v1.0.0 (rispetto all'originale)
-| # | Miglioria | Stato |
-|---|---|---|
-| 0.1 | Tabella cilindri per diametro (fori vs alberi) | ✅ |
-| 0.2 | Picking faccia con Ø, lunghezza, asse e scarto massimo | ✅ |
-| 0.3 | Tolleranza suggerita + analisi automatica al caricamento | ✅ |
-| 0.4 | Layout mobile (viewer sopra, pannello sotto) | ✅ |
-| 0.5 | Test automatici con validazione OpenCASCADE | ✅ |
+| # | Miglioria | Stato | Versione | Note |
+|---|---|---|---|---|
+| 0.1–0.5 | Tabella cilindri, picking, tolleranza automatica, mobile, test OCCT | ✅ | 1.0.0 | |
+| 1 | Coni (smussi, svasature) | ✅ | 1.1.0 | `CONICAL_SURFACE`; svasatura 90° riconosciuta a 45,00° |
+| 2 | Tori (raccordi su spigoli circolari) | ✅ | 1.1.0 | `TOROIDAL_SURFACE`; toro completo chiuso esportato sfaccettato |
+| 3 | Snap ai valori nominali | ✅ | 1.1.0 | Opzione "Arrotonda a valori nominali" |
+| 4 | Filettature | 🟡 | 1.1.0 | Riconoscimento, M-size ISO, passo, senso, report e nome faccia. **Manca**: sostituzione con cilindro nominale nello STEP (resta sfaccettata) |
+| 5 | Freeform → NURBS | 🟡 | 1.1.0 | B-spline bicubiche per zone "campo di altezze"; superfici che si richiudono (es. tubi organici) restano sfaccettate |
+| 6 | Conversione/unione facce manuale | ✅ | 1.2.0 | Con annulla a 20 livelli |
+| 7 | Selezione e rinomina corpi | ✅ | 1.2.0 | Nomi anche da 3MF/OBJ/STL |
+| 8 | Riparazione mesh | 🟡 | 1.1.0 | Chiusura buchi (anche annidati). **Manca**: correzione spigoli non-manifold e auto-intersezioni |
+| 9 | Report fori CSV | ✅ | 1.2.0 | CSV per Excel; PDF non fatto |
+| 10 | Export STL / OBJ | ✅ | 1.2.0 | |
+| 11 | Heatmap di deviazione | ✅ | 1.2.0 | |
+| 12 | "Apri in Fusion/FreeCAD" | 🟡 | 1.2.0 | Da browser non si può lanciare un CAD locale senza server: c'è **Condividi STEP** (telefono) e l'app Windows apre i file dal sistema |
+| 13 | 3MF: trasformazioni e nomi | ✅ | 1.1.0 | |
+| 14 | PWA offline | ✅ | 1.3.0 | |
+| 15 | App Windows portabile + integrazione con 3D STL Multipart Maker | 🟡 | 1.3.0 | Exe WebView2 compilato (da provare su Windows); API `postMessage`/`?url=` pronte, il pulsante lato Multipart Maker va aggiunto in quel progetto |
+| 16 | Core Rust/WASM | ⏸️ | — | Non serve ora: 205 k triangoli in 3 s |
+| 17 | CI GitHub Actions | ✅ | 1.3.0 | `ci.yml`, `desktop.yml` |
+| 18 | IT/EN, tema chiaro, viste | ✅ | 1.2.0 | |
 
-## Riconoscimento
-| # | P | Miglioria | Note |
-|---|---|---|---|
-| 1 | A | **Coni** (smussi su fori, svasature) | Asse = autovettore minimo della covarianza delle normali; n·asse = cos α costante. Bordo STEP già pronto (`CONICAL_SURFACE`). |
-| 2 | B | **Tori** (raccordi su spigoli circolari) | Oggi diventano freeform: sono il caso più comune nei pezzi stampati. |
-| 3 | A | **Snap ai valori nominali** ("beautify") | Ø arrotondati a 0,05 mm o a tabelle (M3 → 3,2/3,4), normali agganciate agli assi, assi paralleli/coassiali unificati. L'originale non lo fa: è il vero salto di qualità per l'editing in CAD. |
-| 4 | B | **Filettature** | Riconoscere l'elica → cilindro nominale + attributo "M6×1" nel nome faccia, così in Fusion si riapplica `Thread`. |
-| 5 | B | **Freeform → NURBS** | Fitting B-spline delle macchie freeform: STEP molto più leggero e liscio. |
-
-## Editing (funzioni "Pro" dell'originale, qui gratis)
-| # | P | Miglioria |
-|---|---|---|
-| 6 | A | Clic su faccia → **converti** in piano/cilindro o **unisci** alla vicina |
-| 7 | A | **Selezione corpi**: esporta solo i corpi scelti, rinominali (nome nello STEP) |
-| 8 | B | **Riparazione mesh**: chiusura buchi, rimozione non-manifold, saldatura con tolleranza |
-
-## Output e integrazioni
-| # | P | Miglioria |
-|---|---|---|
-| 9 | A | **Report fori** CSV/PDF (posizione, Ø, profondità, passante/cieco) |
-| 10 | C | Export anche STL "ripulito" e OBJ colorato per tipo |
-| 11 | C | Mappa di **deviazione** mesh ↔ superfici (heatmap) per validare la conversione |
-| 12 | C | Pulsante "Apri in Fusion/FreeCAD" via protocollo URL o file associato |
-| 13 | A | 3MF: applicare le trasformazioni `build/item` e i nomi degli oggetti come nomi dei corpi |
-
-## Piattaforma
-| # | P | Miglioria |
-|---|---|---|
-| 14 | A | **PWA offline**: three.js incluso nel repo + service worker; installabile anche su telefono |
-| 15 | B | **App Windows portabile** (Tauri) e integrazione con *3D STL Multipart Maker*: split del modello e conversione STEP nello stesso strumento |
-| 16 | B | Core in **Rust/WASM** per mesh > 1 M triangoli (oggi JS: ~0,8 s per 68 k) |
-| 17 | A | **CI GitHub Actions**: test + validazione OCCT a ogni push, deploy Pages automatico |
-| 18 | C | Interfaccia IT/EN, tema chiaro, scorciatoie (vista dall'alto/fronte, sezione) |
+## Prossimi passi proposti
+1. Filettature: sostituire la zona filettata con il cilindro nominale quando confina con piani ⟂ asse.
+2. Riparazione non-manifold e auto-intersezioni.
+3. Toro/sfera completi divisi in due facce invece che sfaccettati.
+4. Pulsante "Converti in STEP" in 3D STL Multipart Maker che apre Mesh2STEP via `postMessage`.
+5. Report PDF con disegno quotato dei fori.

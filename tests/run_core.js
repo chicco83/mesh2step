@@ -1,5 +1,5 @@
 // Mesh2STEP — tests/run_core.js
-// Versione: 1.0.0 — 2026-10-05 17:10
+// Versione: 1.1.0 — 2026-10-06 13:20
 // Esegue il core in Node su ogni file di tests/samples e scrive gli STEP in tests/out.
 // Uso: node tests/run_core.js [cartella_input] [cartella_output] [tol]
 const fs = require('fs'), path = require('path');
@@ -14,11 +14,21 @@ fs.mkdirSync(outDir, { recursive: true });
     const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
     const t0 = Date.now();
     const soup = await M2S.parseFile(f, ab);
-    const { M, seg } = M2S.analyse(soup, { tol, angle: 1, cylinders: true, spheres: true });
+    const snap = !!process.env.SNAP;   // [v1.1.0] SNAP=1 per lo snap ai valori nominali
+    const { M, seg } = M2S.analyse(soup, { tol, angle: 1, cylinders: true, spheres: true, cones: true, tori: true, threads: true, nurbs: true, snap });
+    const feat = M2S.features(M, seg);
     const st = M2S.exportSTEP(M, seg, { name: path.parse(f).name, tol });
     fs.writeFileSync(path.join(outDir, path.parse(f).name + '.step'), st.text);
+    // [v1.1.0] mesh aperte: chiude i buchi ed esporta anche <nome>_riparata.step
+    if (M.open > 0) {
+      const R = M2S.fillHoles(M), M2 = M2S.buildMesh(R.soup), s2 = M2S.segment(M2, { tol, angle: 1, cylinders: true, spheres: true });
+      fs.writeFileSync(path.join(outDir, path.parse(f).name + '_riparata.step'), M2S.exportSTEP(M2, s2, { name: path.parse(f).name, tol }).text);
+      console.log(JSON.stringify({ file: f, riparazione: { buchi: R.holes, triangoli: R.added, apertiDopo: M2.open, volume: +M2.volume.toFixed(3) } }));
+    }
     const cyl = seg.regions.filter(r => r.type === 'cylinder').map(r => 'Ø' + (2 * r.radius).toFixed(3) + (r.outward ? '' : ' foro'));
     const sph = seg.regions.filter(r => r.type === 'sphere').map(r => 'R' + r.radius.toFixed(3));
-    console.log(JSON.stringify({ file: f, tris: M.nT, ms: Date.now() - t0, volume: +M.volume.toFixed(4), stats: seg.stats, cyl, sph, faces: st.faces, edges: st.edges, solids: st.solids }));
+    const extra = seg.regions.filter(r => ['cone', 'torus', 'thread', 'bspline'].includes(r.type)).map(r => r.type === 'cone' ? 'cono ' + (r.alpha * 180 / Math.PI).toFixed(2) + '°' : r.type === 'torus' ? 'toro R' + r.R.toFixed(3) + ' r' + r.r.toFixed(3) : r.type === 'thread' ? 'filetto ' + r.label + ' (' + r.score.toFixed(2) + ')' : 'bspline ' + r.nc + 'x' + r.nc + ' err ' + r.err.toFixed(4));
+    const holes = feat.holes.map(h => 'Ø' + h.diameter.toFixed(2) + (h.through ? ' passante' : ' cieco') + ' p' + h.depth.toFixed(2));
+    console.log(JSON.stringify({ file: f, tris: M.nT, ms: Date.now() - t0, stats: Object.fromEntries(Object.entries(seg.stats).filter(([, v]) => v)), cyl, sph, extra, holes, bodies: feat.bodies.map(b => b.name), faces: st.faces, edges: st.edges, solids: st.solids }));
   }
 })();

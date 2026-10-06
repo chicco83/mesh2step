@@ -1,5 +1,48 @@
 # CHANGELOG — Mesh2STEP
-Versione documento: 1.0.1 — 2026-10-06 13:10
+Versione documento: 1.3.0 — 2026-10-06 13:45
+
+## 5. [1.3.0] — 2026-10-06 13:45 — Piattaforma
+**Aggiunto**
+- **PWA offline**: three.js 0.169 incluso in `vendor/` (niente CDN), `manifest.webmanifest`, `sw.js` (cache app shell), icone; installabile su desktop e telefono; apre `.stl/.obj/.3mf` dal sistema (File Handling API).
+- **Build single-file completamente offline**: `dist/mesh2step_v1.3.0_20261006-1342.html` con three.js incorporato (moduli Blob).
+- **App Windows portabile** (`desktop/`): finestra nativa WebView2 in C#/.NET 8, file web incorporati nell'exe, apertura file da riga di comando / "Apri con". Exe singolo self-contained `Mesh2STEP_v1.3.0_<data>.exe` (compilato e verificato in build, non ancora provato su Windows).
+- **API di integrazione** (per 3D STL Multipart Maker o altre app): `postMessage({type:'mesh2step:open', name, buffer})`, parametro `?url=`, messaggio `mesh2step:ready` all'opener.
+- **CI GitHub Actions**: `ci.yml` (mesh di prova → analisi → validazione OpenCASCADE → build, artifact) e `desktop.yml` (exe Windows; allegato alla release sui tag `v*`).
+
+**Valutato e non fatto**
+- Core in Rust/WASM: non necessario ora (205 k triangoli in 3,0 s, 55 k triangoli di filettatura in 2,8 s in Node).
+
+## 4. [1.2.0] — 2026-10-06 13:40 — Interfaccia
+**Aggiunto**
+- **Editing facce**: selezione singola o multipla (toggle, Shift/Ctrl+clic), conversione in piano/cilindro/cono/sfera/toro/B-spline/freeform o unione automatica, scarto massimo accettato, **Annulla** (20 livelli).
+- **Corpi**: elenco con includi/escludi e rinomina; il nome va nel `MANIFOLD_SOLID_BREP` dello STEP.
+- **Report CSV** di fori (Ø, profondità, passante/cieco, asse, posizione), alberi, coni, filettature; separatore `;` e virgola decimale in italiano.
+- **Export STL** binario (anche della mesh riparata) e **OBJ** con un gruppo per faccia riconosciuta.
+- **Heatmap di deviazione** mesh ↔ superficie con legenda (verde 0 → rosso ≥ tolleranza).
+- **Viste** Iso / Alto / Fronte / Destra, contorni on/off.
+- **Interfaccia IT/EN** e **tema chiaro/scuro** (preferenze ricordate nel browser).
+- **Condividi STEP** (Web Share API, su telefono).
+- Pulsante **Chiudi i buchi** per mesh aperte.
+- Tabella fori con passante/cieco e profondità; tabella filettature.
+
+**Modificato**
+- `src/app.js`, `src/worker.js`, `index.html`, `build.mjs` riscritti; versioni precedenti in `archive/`.
+
+## 3. [1.1.0] — 2026-10-06 13:30 — Riconoscimento e STEP
+**Aggiunto**
+- **Coni** (smussi, svasature): asse dalle normali, apice ai minimi quadrati, `CONICAL_SURFACE`.
+- **Tori** (raccordi su spigoli circolari): crescita da semi a doppia curvatura, fit Levenberg-Marquardt a 7 parametri, `TOROIDAL_SURFACE`.
+- **Filettature**: patch elicoidali, passo per concentrazione di fase delle creste, tabella ISO metrica (grosso e fine), interna/esterna, destra/sinistra; facce chiamate `THREAD M6` nello STEP.
+- **B-spline** bicubiche (campo di altezze, 6–12 punti di controllo per lato) per zone organiche lisce: `B_SPLINE_SURFACE_WITH_KNOTS`.
+- **Snap ai valori nominali** (opzionale): normali e assi sugli assi globali, Ø a 0,1/0,05/0,01 mm, semi-angoli a 0,5°, raggi di toro, cilindri coassiali sulla stessa retta; ogni modifica accettata solo entro tolleranza.
+- **Spigoli circolari coerenti** con cilindri e coni adiacenti (stesso asse e raggio).
+- **Riparazione**: chiusura buchi con ear clipping, anelli complanari annidati come poligoni con fori.
+- **Fori passanti/ciechi** e profondità (fondo piano o punta conica).
+- **Nomi dei corpi** da 3MF (`name`), OBJ (`o`/`g`), STL ASCII (`solid`); **3MF**: componenti annidati e trasformazioni `build/item` e `component`.
+- Regioni chiuse senza bordo (sfera/toro completi) esportate sfaccettate (una faccia STEP richiede un anello).
+- Facce cilindriche chiamate `HOLE D…` / `SHAFT D…` nello STEP.
+
+**Verificato**: 13 mesh di prova + riparazione, tutte `valid=True` in OpenCASCADE; volumi esatti su svasatura (15604,16 mm³) e blocco riparato.
 
 ## 2. [1.0.1] — 2026-10-06 13:10
 **Documentazione**

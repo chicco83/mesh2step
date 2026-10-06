@@ -1,5 +1,5 @@
 # Mesh2STEP — tests/make_samples.py
-# Versione: 1.0.0 — 2026-10-05 17:10
+# Versione: 1.1.0 — 2026-10-06 13:20
 # Genera mesh di prova (STL) con geometria nota tramite manifold3d (booleane robuste).
 import sys, os
 import numpy as np
@@ -46,3 +46,56 @@ pm = plate.to_mesh(); trimesh.Trimesh(pm.vert_properties[:, :3], pm.tri_verts).e
 bm = blk.to_mesh(); bt = trimesh.Trimesh(bm.vert_properties[:, :3], bm.tri_verts)
 top = bt.face_normals[:, 2] > 0.99
 bt.update_faces(~top); bt.export(os.path.join(out, 'open_block.stl')); print('open_block.stl (aperta)')
+
+# ---------------- [v1.1.0 2026-10-06] nuovi campioni ----------------
+from manifold3d import CrossSection
+import zipfile, math
+
+# 7) Svasatura: foro Ø6 + cono 90° (Ø12 in superficie) -> cono
+cs = Manifold.cube([40, 40, 10]) - Manifold.cylinder(30, 3, 3, 64).translate([20, 20, -10]) - Manifold.cylinder(3.01, 3, 6.01, 64).translate([20, 20, 7])
+save(cs, 'countersink.stl')
+
+# 8) Albero tornito (revolve): spallamento con raccordo R3 (toro) e smusso 45° (cono)
+# profilo pulito: base Ø24 h10, raccordo concavo R3 tra spalla (z=10) e albero Ø12, albero fino a z=30 con smusso 1x45°
+prof = [(0, 0), (12, 0), (12, 10)]
+prof += [(9 - 3 * math.sin(t), 13 - 3 * math.cos(t)) for t in [i * (math.pi / 2) / 16 for i in range(17)]]
+prof += [(6, 29), (5, 30), (0, 30)]
+shaft2 = Manifold.revolve(CrossSection([prof]), 96)
+save(shaft2, 'turned_shaft.stl')
+
+# 9) Vite M6x1 (profilo triangolare elicoidale) su testa cilindrica
+P, rmax = 1.0, 3.0; depth = 0.6134 * P; npts = 48
+pts2 = []
+for i in range(npts):
+    th = 2 * math.pi * i / npts
+    f = (th / (2 * math.pi)) % 1.0
+    tri = 1 - abs(2 * f - 1)
+    rho = rmax - depth + depth * tri
+    pts2.append((rho * math.cos(th), rho * math.sin(th)))
+L = 12
+thr = Manifold.extrude(CrossSection([pts2]), L, int(L / P * npts), 360 * L / P)  # twist positivo = filetto destro
+bolt = thr.translate([0, 0, 6]) + Manifold.cylinder(6.2, 5, 5, 64)
+save(bolt, 'bolt_m6.stl')
+
+# 10) Piastra con bombatura liscia (campo di altezze) -> B-spline
+bump = Manifold.cube([40, 40, 5]).refine(24)
+def wf(v):
+    x, y, z = v
+    if z > 4.999: z = z + 2.0 * (math.sin(math.pi * x / 40) ** 2) * (math.sin(math.pi * y / 40) ** 2)
+    return (x, y, z)
+bump = bump.warp(wf)
+save(bump, 'bump.stl')
+
+# 11) 3MF con due oggetti nominati e trasformazioni di build (traslazioni)
+def mesh_xml(m, oid, name):
+    mm = m.to_mesh(); v = mm.vert_properties[:, :3]; t = mm.tri_verts
+    vs = ''.join(f'<vertex x="{a:.6f}" y="{b:.6f}" z="{c:.6f}"/>' for a, b, c in v)
+    ts = ''.join(f'<triangle v1="{a}" v2="{b}" v3="{c}"/>' for a, b, c in t)
+    return f'<object id="{oid}" name="{name}" type="model"><mesh><vertices>{vs}</vertices><triangles>{ts}</triangles></mesh></object>'
+xml = ('<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources>'
+       + mesh_xml(plate, 1, 'Piastra') + mesh_xml(Manifold.cylinder(10, 4, 4, 48), 2, 'Perno')
+       + '</resources><build><item objectid="1" transform="1 0 0 0 1 0 0 0 1 0 0 0"/><item objectid="2" transform="1 0 0 0 1 0 0 0 1 60 0 0"/></build></model>')
+with zipfile.ZipFile(os.path.join(out, 'named_parts.3mf'), 'w', zipfile.ZIP_DEFLATED) as zf:
+    zf.writestr('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>')
+    zf.writestr('3D/3dmodel.model', xml)
+print('named_parts.3mf')

@@ -1,0 +1,32 @@
+<!--
+  Mesh2STEP Desktop — Mesh2STEP.Desktop.csproj
+  Versione: 1.3.0 — 2026-10-06 13:40 (Europe/Rome)
+  App Windows portabile: finestra nativa WebView2 che incorpora l'app web (wwwroot come risorse).
+  Build: vedi build-desktop.ps1 / build-desktop.sh o la GitHub Action "desktop".
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>disable</Nullable>
+    <AssemblyName>Mesh2STEP</AssemblyName>
+    <RootNamespace>Mesh2Step.Desktop</RootNamespace>
+    <Version>1.3.0</Version>
+    <ApplicationIcon>mesh2step.ico</ApplicationIcon>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- file dell'app web incorporati: nome logico = percorso relativo con '/' -->
+    <EmbeddedResource Include="wwwroot\**\*" LogicalName="www/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

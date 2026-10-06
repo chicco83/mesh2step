@@ -1,0 +1,30 @@
+# Mesh2STEP — app Windows portabile (WebView2)
+# Versione: 1.3.0 — 2026-10-06 13:40 (Europe/Rome)
+# Compila desktop/ in un unico Mesh2STEP_v<ver>_<data>.exe self-contained.
+# Avvio manuale (workflow_dispatch) o con un tag v*; sui tag l'exe viene allegato alla release.
+name: desktop
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: '8.0.x' }
+      - name: Build exe
+        shell: bash
+        run: ./desktop/build-desktop.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Mesh2STEP-windows
+          path: desktop/out/*.exe
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: desktop/out/*.exe

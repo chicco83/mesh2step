@@ -1,17 +1,86 @@
 /*
  * Mesh2STEP — app.js
- * Versione: 1.0.1 — 2026-10-06 13:10 (Europe/Rome)
+ * Versione: 1.3.0 — 2026-10-06 13:40 (Europe/Rome)
+ * Versione precedente archiviata: archive/app_v1.0.1_20261006-1310.js
+ * (2026-10-06: riscritta per editing facce, corpi, report CSV, export STL/OBJ, heatmap deviazione,
+ *  viste, IT/EN, tema chiaro, condivisione, PWA e API di integrazione).
+ *
  * UI + viewer three.js. Tutto il calcolo pesante è nel Web Worker (worker.js + core.js).
  */
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const VERSION = '1.0.1';
+const VERSION = '1.3.0';
 const $ = id => document.getElementById(id);
-$('ver').textContent = 'v' + VERSION;
+const store = { get: k => { try { return localStorage.getItem('m2s.' + k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem('m2s.' + k, v); } catch { /* storage non disponibile */ } } };
+
+// ============================ i18n (IT/EN) ============================
+const DICT = {
+  it: {
+    tagline: 'Da mesh triangolare a solido CAD', s_file: 'File', open: 'Apri mesh (STL, OBJ, 3MF)', repair: 'Chiudi i buchi della mesh',
+    s_detect: 'Riconoscimento', tol: 'Tolleranza (mm)', angle: 'Angolo (°)', snap: 'Arrotonda a valori nominali (Ø, assi, angoli)', analyse: 'Analizza mesh',
+    s_result: 'Risultato', csv: 'Scarica report CSV', s_edit: 'Modifica facce',
+    edit_hint: 'Tocca una faccia per selezionarla; con «Selezione multipla» (o Shift/Ctrl+clic) ne aggiungi altre.',
+    multi: 'Selezione multipla', clearsel: 'Deseleziona', as_auto: 'Automatico (unisci)', apply: 'Applica', maxerr: 'Scarto max accettato (mm)', undo: 'Annulla ultima modifica',
+    s_bodies: 'Corpi', s_export: 'Export', step: 'Scarica STEP', obj: 'OBJ (gruppi)', share: 'Condividi STEP',
+    privacy: "I file restano sul tuo dispositivo: l'elaborazione avviene nel browser.", nav: 'Ruota: trascina · Zoom: rotella/pizzica · Sposta: tasto destro o Shift · Adatta: F',
+    drop: 'Trascina qui un file STL, OBJ o 3MF oppure usa «Apri mesh»', v_top: 'Alto', v_front: 'Fronte', v_right: 'Destra', v_edges: 'Contorni', v_dev: 'Deviazione', dev_title: 'Deviazione mesh ↔ superficie',
+    t_plane: 'Piano', t_cylinder: 'Cilindro', t_cone: 'Cono', t_sphere: 'Sfera', t_torus: 'Toro', t_thread: 'Filettatura', t_bspline: 'B-spline', t_freeform: 'Freeform',
+    t_plane_p: 'Piani', t_cylinder_p: 'Cilindri', t_cone_p: 'Coni', t_sphere_p: 'Sfere', t_torus_p: 'Tori', t_thread_p: 'Filettature', t_bspline_p: 'B-spline', t_freeform_p: 'Freeform (triangoli)',
+    f_name: 'File', f_tris: 'Triangoli', f_bodies: 'Corpi', f_size: 'Dimensioni', f_closed: 'Chiusa', f_volume: 'Volume', yes: 'sì', no_open: 'no ({o} bordi aperti, {n} non-manifold)',
+    reading: 'Lettura di {f}…', loaded: 'Mesh caricata.', open_warn: 'Mesh aperta: usa «Chiudi i buchi» oppure lo STEP sarà una superficie.', analysing: 'Riconoscimento superfici…',
+    done: 'Analisi completata in {s} s.', many_free: ' Molte zone freeform: prova ad aumentare la tolleranza.', step_gen: 'Generazione STEP…',
+    step_ok: 'STEP salvato: {f} facce ({c} spigoli circolari, {l} rettilinei), {s} solido/i.', step_surf: 'STEP salvato: {f} facce, superficie aperta.',
+    repaired: 'Chiusi {h} buchi con {a} triangoli.', no_holes: 'Nessun buco da chiudere.', err: 'Errore: ',
+    'err.notConnected': 'le facce selezionate non sono contigue', 'err.fit': 'nessuna superficie entro lo scarto richiesto (migliore: {b} mm)', 'err.noUndo': 'niente da annullare', 'err.empty': 'nessuna faccia selezionata',
+    sel_n: '{n} facce selezionate ({t} triangoli)', edited: 'Modifica applicata.', undone: 'Modifica annullata.',
+    k_type: 'Tipo', k_tris: 'Triangoli', k_area: 'Area', k_dia: 'Diametro', k_len: 'Lunghezza', k_axis: 'Asse', k_err: 'Scarto max', k_rad: 'Raggio', k_center: 'Centro', k_normal: 'Normale',
+    k_angle: 'Semi-angolo', k_R: 'Raggio maggiore', k_r: 'Raggio minore', k_pitch: 'Passo', k_hand: 'Senso', k_major: 'Ø esterno', k_minor: 'Ø nocciolo', k_ctrl: 'Punti di controllo',
+    hole: 'foro', snapped: 'arrotondato', manual: 'manuale', hand_R: 'destro', hand_L: 'sinistro', internal: 'interno', external: 'esterno',
+    h_holes: 'Fori', h_dia: 'Ø mm', h_depth: 'Prof.', h_n: 'n.', through: 'passante', blind: 'cieco', shafts: 'Alberi/raccordi', h_threads: 'Filettature',
+    b_name: 'Nome', b_closed: 'chiuso', b_open: 'aperto',
+    csv_head: 'tipo;diametro_mm;profondita_mm;passante;asse_x;asse_y;asse_z;pos_x;pos_y;pos_z;note',
+  },
+  en: {
+    tagline: 'From triangle mesh to CAD solid', s_file: 'File', open: 'Open mesh (STL, OBJ, 3MF)', repair: 'Close mesh holes',
+    s_detect: 'Recognition', tol: 'Tolerance (mm)', angle: 'Angle (°)', snap: 'Round to nominal values (Ø, axes, angles)', analyse: 'Analyse mesh',
+    s_result: 'Result', csv: 'Download CSV report', s_edit: 'Edit faces',
+    edit_hint: 'Tap a face to select it; with "Multi-select" (or Shift/Ctrl+click) you add more.',
+    multi: 'Multi-select', clearsel: 'Clear selection', as_auto: 'Automatic (merge)', apply: 'Apply', maxerr: 'Max accepted deviation (mm)', undo: 'Undo last edit',
+    s_bodies: 'Bodies', s_export: 'Export', step: 'Download STEP', obj: 'OBJ (groups)', share: 'Share STEP',
+    privacy: 'Your files stay on your device: processing happens in the browser.', nav: 'Rotate: drag · Zoom: wheel/pinch · Pan: right button or Shift · Fit: F',
+    drop: 'Drop an STL, OBJ or 3MF file here or use "Open mesh"', v_top: 'Top', v_front: 'Front', v_right: 'Right', v_edges: 'Edges', v_dev: 'Deviation', dev_title: 'Mesh ↔ surface deviation',
+    t_plane: 'Plane', t_cylinder: 'Cylinder', t_cone: 'Cone', t_sphere: 'Sphere', t_torus: 'Torus', t_thread: 'Thread', t_bspline: 'B-spline', t_freeform: 'Freeform',
+    t_plane_p: 'Planes', t_cylinder_p: 'Cylinders', t_cone_p: 'Cones', t_sphere_p: 'Spheres', t_torus_p: 'Tori', t_thread_p: 'Threads', t_bspline_p: 'B-splines', t_freeform_p: 'Freeform (triangles)',
+    f_name: 'File', f_tris: 'Triangles', f_bodies: 'Bodies', f_size: 'Size', f_closed: 'Closed', f_volume: 'Volume', yes: 'yes', no_open: 'no ({o} open edges, {n} non-manifold)',
+    reading: 'Reading {f}…', loaded: 'Mesh loaded.', open_warn: 'Open mesh: use "Close mesh holes" or the STEP will be a surface.', analysing: 'Recognising surfaces…',
+    done: 'Analysis done in {s} s.', many_free: ' Many freeform areas: try a larger tolerance.', step_gen: 'Generating STEP…',
+    step_ok: 'STEP saved: {f} faces ({c} circular, {l} straight edges), {s} solid(s).', step_surf: 'STEP saved: {f} faces, open surface.',
+    repaired: 'Closed {h} holes with {a} triangles.', no_holes: 'No holes to close.', err: 'Error: ',
+    'err.notConnected': 'the selected faces are not contiguous', 'err.fit': 'no surface within the requested deviation (best: {b} mm)', 'err.noUndo': 'nothing to undo', 'err.empty': 'no face selected',
+    sel_n: '{n} faces selected ({t} triangles)', edited: 'Edit applied.', undone: 'Edit undone.',
+    k_type: 'Type', k_tris: 'Triangles', k_area: 'Area', k_dia: 'Diameter', k_len: 'Length', k_axis: 'Axis', k_err: 'Max deviation', k_rad: 'Radius', k_center: 'Centre', k_normal: 'Normal',
+    k_angle: 'Half angle', k_R: 'Major radius', k_r: 'Minor radius', k_pitch: 'Pitch', k_hand: 'Hand', k_major: 'Major Ø', k_minor: 'Minor Ø', k_ctrl: 'Control points',
+    hole: 'hole', snapped: 'rounded', manual: 'manual', hand_R: 'right', hand_L: 'left', internal: 'internal', external: 'external',
+    h_holes: 'Holes', h_dia: 'Ø mm', h_depth: 'Depth', h_n: 'no.', through: 'through', blind: 'blind', shafts: 'Shafts/fillets', h_threads: 'Threads',
+    b_name: 'Name', b_closed: 'closed', b_open: 'open',
+    csv_head: 'type,diameter_mm,depth_mm,through,axis_x,axis_y,axis_z,pos_x,pos_y,pos_z,note',
+  },
+};
+// lingua: scelta salvata, altrimenti quella del browser (italiano se "it", inglese altrimenti)
+let lang = store.get('lang') || ((navigator.language || 'it').slice(0, 2) === 'it' ? 'it' : 'en');
+const t = (k, p = {}) => (DICT[lang][k] || DICT.it[k] || k).replace(/\{(\w+)\}/g, (_, x) => p[x]);
+function applyLang() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+  $('lang').textContent = lang === 'it' ? 'EN' : 'IT';
+  if (info) showInfo();
+  if (res) { showResults(); updateSel(); }
+}
+$('lang').onclick = () => { lang = lang === 'it' ? 'en' : 'it'; store.set('lang', lang); applyLang(); };
 
 // ============================ Worker ============================
-// In dist/ il sorgente del worker (core+worker) è incorporato in <script id="worker-src">
+// in dist/ il sorgente del worker (core+worker) è incorporato in <script id="worker-src">
 function makeWorker() {
   const inl = document.getElementById('worker-src');
   if (inl) return new Worker(URL.createObjectURL(new Blob([inl.textContent], { type: 'text/javascript' })));
@@ -19,25 +88,37 @@ function makeWorker() {
 }
 const worker = makeWorker();
 let reqId = 0; const pending = new Map();
-worker.onmessage = ({ data }) => { const p = pending.get(data.id); if (!p) return; pending.delete(data.id); data.ok ? p.res(data) : p.rej(new Error(data.error)); };
+worker.onmessage = ({ data }) => { const p = pending.get(data.id); if (!p) return; pending.delete(data.id); if (data.ok) p.res(data); else { const e = new Error(data.error); e.best = data.best; p.rej(e); } };
 const call = (msg, transfer = []) => new Promise((res, rej) => { const id = ++reqId; pending.set(id, { res, rej }); worker.postMessage({ id, ...msg }, transfer); });
 
-// ============================ Stato UI ============================
+// ============================ Stato ============================
 const status = (txt, cls = '') => { $('status').textContent = txt; $('status').className = cls; };
 const busy = on => { $('busy').classList.toggle('on', on); };
-const fmt = (x, d = 3) => (Math.abs(x) < 0.5 * 10 ** -d ? 0 : Number(x)).toLocaleString('it-IT', { minimumFractionDigits: d, maximumFractionDigits: d });
-let info = null, regions = null, faceOf = null, analysedTol = 0.02;
+const fmt = (x, d = 3) => (Math.abs(x) < 0.5 * 10 ** -d ? 0 : Number(x)).toLocaleString(lang === 'it' ? 'it-IT' : 'en-GB', { minimumFractionDigits: d, maximumFractionDigits: d });
+const errText = e => t(e.message, { b: e.best != null && isFinite(e.best) ? fmt(e.best, 3) : '—' });
+let info = null, fileName = '', res = null, analysedTol = 0.02, multi = false, showDev = false, showEdges = true, bodyCfg = [];
+const sel = new Set();
 
 // ============================ Viewer ============================
 const canvas = $('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-const scene = new THREE.Scene(); scene.background = new THREE.Color(0x101214);
+const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 1e6);
 const controls = new OrbitControls(camera, canvas); controls.enableDamping = true;
 scene.add(new THREE.HemisphereLight(0xffffff, 0x30343a, 1.6));
 const sun = new THREE.DirectionalLight(0xffffff, 1.4); camera.add(sun); sun.position.set(1, 2, 3); scene.add(camera);
 let meshObj = null, edgeObj = null;
+
+// ---- tema chiaro/scuro (preferenza salvata, altrimenti quella di sistema) ----
+function applyTheme(th) {
+  document.documentElement.dataset.theme = th; store.set('theme', th);
+  const bg = getComputedStyle(document.documentElement).getPropertyValue('--view-bg').trim();
+  scene.background = new THREE.Color(bg || '#101214');
+  if (edgeObj) edgeObj.material.color.set(th === 'light' ? 0x2a2f35 : 0x0b0d0f);
+  paint();
+}
+$('theme').onclick = () => applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
 
 function resize() {
   const r = canvas.parentElement.getBoundingClientRect();
@@ -46,145 +127,268 @@ function resize() {
 new ResizeObserver(resize).observe(canvas.parentElement);
 (function loop() { controls.update(); renderer.render(scene, camera); requestAnimationFrame(loop); })();
 
-function fit() {
+// viste predefinite (asse Z verso l'alto, come nei CAD)
+const VIEWS = { iso: [1, -1.4, 0.9], top: [0, -1e-4, 1], front: [0, -1, 0], right: [1, 0, 0] };
+function fit(view = 'iso') {
   if (!meshObj) return;
   const box = new THREE.Box3().setFromObject(meshObj), c = box.getCenter(new THREE.Vector3()), r = box.getSize(new THREE.Vector3()).length() / 2 || 1;
   const d = r / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2)) * 1.05;
-  camera.position.copy(c).add(new THREE.Vector3(1, -1.4, 0.9).normalize().multiplyScalar(d));
+  camera.position.copy(c).add(new THREE.Vector3(...VIEWS[view]).normalize().multiplyScalar(d));
   camera.up.set(0, 0, 1); camera.near = d / 1000; camera.far = d * 100; camera.updateProjectionMatrix();
   controls.target.copy(c); controls.update();
 }
-addEventListener('keydown', e => { if ((e.key === 'f' || e.key === 'F') && e.target.tagName !== 'INPUT') fit(); });
+document.querySelectorAll('[data-view]').forEach(b => { b.onclick = () => fit(b.dataset.view); });
+addEventListener('keydown', e => { if ((e.key === 'f' || e.key === 'F') && !/INPUT|SELECT/.test(e.target.tagName)) fit(); });
+$('t_edges').onclick = () => { showEdges = !showEdges; $('t_edges').classList.toggle('on', showEdges); if (edgeObj) edgeObj.visible = showEdges; };
+$('t_dev').onclick = () => { showDev = !showDev; $('t_dev').classList.toggle('on', showDev); paint(); };
 
-// colori per tipo, con leggera variazione per regione (per distinguere facce adiacenti)
-const BASE = { plane: '#7d93b8', cylinder: '#3fd0b6', sphere: '#f39a4a', freeform: '#c46bd6', none: '#9aa1a8' };
+// colori per tipo, con variazione per regione (facce adiacenti distinguibili)
+const BASE = { plane: '#7d93b8', cylinder: '#3fd0b6', cone: '#5fb0f0', sphere: '#f39a4a', torus: '#e3c84a', thread: '#ff6f91', bspline: '#9ad35a', freeform: '#c46bd6', none: '#9aa1a8' };
 function regionColor(r) {
   const c = new THREE.Color(BASE[r.type] || BASE.none), hsl = {}; c.getHSL(hsl);
-  const k = ((r.id * 0.618034) % 1) - 0.5;   // variazione deterministica
+  const k = ((r.id * 0.618034) % 1) - 0.5;
   return new THREE.Color().setHSL(hsl.h + (r.type === 'freeform' ? 0 : k * 0.06), hsl.s, THREE.MathUtils.clamp(hsl.l + k * 0.18, 0.25, 0.8));
 }
-function paint(highlight = -1) {
+// scala deviazione: verde (0) -> giallo (tol/2) -> rosso (≥ tol)
+const C0 = new THREE.Color('#2bb673'), C1 = new THREE.Color('#f0d23c'), C2 = new THREE.Color('#ef5b5b');
+const devColor = x => { const s = Math.min(1, Math.max(0, x)); return s < 0.5 ? C0.clone().lerp(C1, s * 2) : C1.clone().lerp(C2, (s - 0.5) * 2); };
+function paint() {
+  if (!meshObj) return;
   const col = meshObj.geometry.attributes.color, a = col.array, nT = a.length / 9;
-  const cache = new Map(), none = new THREE.Color(BASE.none);
-  for (let t = 0; t < nT; t++) {
+  const cache = new Map(), none = new THREE.Color(BASE.none), selC = new THREE.Color(getComputedStyle(document.documentElement).getPropertyValue('--sel').trim() || '#ffd84a');
+  for (let i = 0; i < nT; i++) {
     let c = none;
-    if (faceOf) {
-      const f = faceOf[t];
-      if (!cache.has(f)) { const cc = regionColor(regions[f]); if (f === highlight) cc.offsetHSL(0, 0, 0.18); cache.set(f, cc); }
-      c = cache.get(f);
+    if (res) {
+      const f = res.face[i];
+      if (sel.has(f)) c = selC;
+      else if (showDev) c = devColor(res.dev[i] / Math.max(1e-9, analysedTol));
+      else { if (!cache.has(f)) cache.set(f, regionColor(res.regions[f])); c = cache.get(f); }
     }
-    for (let k = 0; k < 3; k++) { a[t * 9 + k * 3] = c.r; a[t * 9 + k * 3 + 1] = c.g; a[t * 9 + k * 3 + 2] = c.b; }
+    for (let k = 0; k < 3; k++) { a[i * 9 + k * 3] = c.r; a[i * 9 + k * 3 + 1] = c.g; a[i * 9 + k * 3 + 2] = c.b; }
   }
   col.needsUpdate = true;
+  $('devlegend').hidden = !showDev || !res;
+  if (res) $('devmax').textContent = '≥ ' + fmt(analysedTol, 3) + ' mm (max ' + fmt(res.devMax, 4) + ')';
 }
-
 function showMesh(positions) {
   for (const o of [meshObj, edgeObj]) if (o) { scene.remove(o); o.geometry.dispose(); o.material.dispose(); }
   edgeObj = null;
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(positions.length), 3));
-  g.computeVertexNormals();   // geometria non indicizzata -> shading piatto per triangolo
+  g.computeVertexNormals();   // non indicizzata -> shading piatto
   meshObj = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.65, metalness: 0.05, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }));
   scene.add(meshObj); paint(); fit();
 }
-function showEdges(seg) {
+function showEdgesObj(seg) {
   if (edgeObj) { scene.remove(edgeObj); edgeObj.geometry.dispose(); }
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(seg, 3));
-  edgeObj = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x0b0d0f }));
-  scene.add(edgeObj);
+  edgeObj = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: document.documentElement.dataset.theme === 'light' ? 0x2a2f35 : 0x0b0d0f }));
+  edgeObj.visible = showEdges; scene.add(edgeObj);
 }
 
-// ---- picking: clic (senza trascinamento) su una faccia -> dettagli ----
+// ---- picking e selezione (clic singolo; multi con toggle, Shift, Ctrl o Cmd) ----
 const ray = new THREE.Raycaster(); let downAt = null;
 canvas.addEventListener('pointerdown', e => { downAt = [e.clientX, e.clientY]; });
 canvas.addEventListener('pointerup', e => {
-  if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 4 || !meshObj || !faceOf) return;
+  if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 5 || !meshObj || !res) return;
   const r = canvas.getBoundingClientRect();
   ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
   const hit = ray.intersectObject(meshObj)[0];
-  if (!hit) { $('pick').hidden = true; paint(); return; }
-  const reg = regions[faceOf[hit.faceIndex]]; paint(reg.id); showPick(reg);
+  const addMode = multi || e.shiftKey || e.ctrlKey || e.metaKey;
+  if (!hit) { if (!addMode) { sel.clear(); updateSel(); } return; }
+  const f = res.face[hit.faceIndex];
+  if (addMode) { if (sel.has(f)) sel.delete(f); else sel.add(f); } else { sel.clear(); sel.add(f); }
+  updateSel();
 });
-const TYPE_IT = { plane: 'Piano', cylinder: 'Cilindro', sphere: 'Sfera', freeform: 'Freeform (sfaccettato)' };
+$('multi').onclick = () => { multi = !multi; $('multi').classList.toggle('on', multi); };
+$('clearsel').onclick = () => { sel.clear(); updateSel(); };
+function updateSel() {
+  paint();
+  const ids = [...sel];
+  $('apply').disabled = !ids.length;
+  $('selinfo').textContent = ids.length ? t('sel_n', { n: ids.length, t: ids.reduce((s, i) => s + res.regions[i].nTris, 0) }) : '';
+  if (ids.length === 1) showPick(res.regions[ids[0]]); else $('pick').hidden = true;
+}
 function showPick(r) {
-  const rows = [['Tipo', TYPE_IT[r.type] + (r.hole ? ' · foro' : '')], ['Triangoli', r.nTris], ['Area', fmt(r.area, 2) + ' mm²']];
-  if (r.type === 'cylinder') rows.push(['Diametro', 'Ø ' + fmt(2 * r.radius) + ' mm'], ['Lunghezza', fmt(r.height, 2) + ' mm'], ['Asse', r.axis.map(v => fmt(v, 3)).join(' ; ')], ['Scarto max', fmt(r.err, 4) + ' mm']);
-  if (r.type === 'sphere') rows.push(['Raggio', 'R ' + fmt(r.radius) + ' mm'], ['Centro', r.center.map(v => fmt(v, 2)).join(' ; ')], ['Scarto max', fmt(r.err, 4) + ' mm']);
-  if (r.type === 'plane') rows.push(['Normale', r.normal.map(v => fmt(v, 3)).join(' ; ')]);
+  const v3 = (v, d = 3) => v.map(x => fmt(x, d)).join(' ; ');
+  const tags = [r.hole ? t('hole') : '', r.snapped ? t('snapped') : '', r.manual ? t('manual') : ''].filter(Boolean).join(', ');
+  const rows = [[t('k_type'), t('t_' + r.type) + (tags ? ' · ' + tags : '')], [t('k_tris'), r.nTris], [t('k_area'), fmt(r.area, 2) + ' mm²']];
+  if (r.type === 'cylinder') rows.push([t('k_dia'), 'Ø ' + fmt(2 * r.radius) + ' mm'], [t('k_len'), fmt(r.height, 2) + ' mm'], [t('k_axis'), v3(r.axis)]);
+  if (r.type === 'sphere') rows.push([t('k_rad'), 'R ' + fmt(r.radius) + ' mm'], [t('k_center'), v3(r.center, 2)]);
+  if (r.type === 'plane') rows.push([t('k_normal'), v3(r.normal)]);
+  if (r.type === 'cone') rows.push([t('k_angle'), fmt(r.alpha * 180 / Math.PI, 2) + '° (' + fmt(r.alpha * 360 / Math.PI, 1) + '° incl.)'], [t('k_axis'), v3(r.axis)]);
+  if (r.type === 'torus') rows.push([t('k_R'), fmt(r.R) + ' mm'], [t('k_r'), 'R ' + fmt(r.r) + ' mm'], [t('k_axis'), v3(r.axis)]);
+  if (r.type === 'thread') rows.push([t('t_thread'), r.label + ' ' + t(r.internal ? 'internal' : 'external')], [t('k_pitch'), fmt(r.pitch, 2) + ' mm'], [t('k_hand'), t('hand_' + r.hand)], [t('k_major'), fmt(r.major, 2)], [t('k_minor'), fmt(r.minor, 2)], [t('k_len'), fmt(r.length, 2) + ' mm']);
+  if (r.type === 'bspline') rows.push([t('k_ctrl'), r.nc + ' × ' + r.nc]);
+  if (r.type !== 'freeform' && r.type !== 'thread') rows.push([t('k_err'), fmt(r.err, 4) + ' mm']);
   $('pick').innerHTML = '<dl class="kv">' + rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('') + '</dl>';
   $('pick').hidden = false;
 }
 
 // ============================ Caricamento ============================
-async function loadFile(file) {
+function showInfo() {
+  const size = info.bbox[1].map((v, i) => v - info.bbox[0][i]);
+  const closed = info.open === 0 && info.nonManifold === 0;
+  $('meshinfo').innerHTML = [
+    [t('f_name'), fileName], [t('f_tris'), info.nT.toLocaleString()], [t('f_bodies'), info.bodies],
+    [t('f_size'), size.map(v => fmt(v, 1)).join(' × ') + ' mm'],
+    [t('f_closed'), closed ? t('yes') : t('no_open', { o: info.open, n: info.nonManifold })],
+    [t('f_volume'), closed ? fmt(Math.abs(info.volume) / 1000, 2) + ' cm³' : '—'],
+  ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+  $('meshinfo').hidden = false;
+  $('repair').hidden = info.open === 0;
+}
+function onMesh(r) {
+  info = r.info; res = null; sel.clear();
+  bodyCfg = info.bodyList.map(b => ({ name: b.name, include: true }));
+  $('results').hidden = true; $('editsec').hidden = true; $('pick').hidden = true; $('drop').style.display = 'none';   // [2026-10-06] prima: $('drop').textContent = '' (il cambio lingua lo riscriveva)
+  showMesh(r.positions); showInfo(); renderBodies(info.bodyList);
+  $('analyse').disabled = false; $('step').disabled = true; $('stl').disabled = false; $('obj').disabled = false;
+  // tolleranza suggerita: 0,01–0,2 mm in proporzione alla diagonale del pezzo
+  $('tol').value = Math.min(0.2, Math.max(0.01, +(info.diag * 1e-4).toFixed(3)));
+}
+async function loadBuffer(name, buf) {
   try {
-    busy(true); status('Lettura di ' + file.name + '…');
-    const buf = await file.arrayBuffer();
-    const r = await call({ cmd: 'load', name: file.name, buf }, [buf]);
-    info = r.info; regions = null; faceOf = null;
-    $('results').hidden = true; $('pick').hidden = true; $('drop').textContent = '';
-    showMesh(r.positions);
-    const size = info.bbox[1].map((v, i) => v - info.bbox[0][i]);
+    busy(true); fileName = name; status(t('reading', { f: name }));
+    const r = await call({ cmd: 'load', name, buf }, [buf]);
+    onMesh(r);
     const closed = info.open === 0 && info.nonManifold === 0;
-    $('meshinfo').innerHTML = [
-      ['File', file.name], ['Triangoli', info.nT.toLocaleString('it-IT')], ['Corpi', info.bodies],
-      ['Dimensioni', size.map(v => fmt(v, 1)).join(' × ') + ' mm'],
-      ['Chiusa', closed ? 'sì' : `no (${info.open} bordi aperti, ${info.nonManifold} non-manifold)`],
-      ['Volume', closed ? fmt(Math.abs(info.volume) / 1000, 2) + ' cm³' : '—'],
-    ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
-    $('meshinfo').hidden = false;
-    $('analyse').disabled = false; $('step').disabled = true;
-    // tolleranza suggerita: 0,02 mm per pezzi piccoli, scala con la diagonale per pezzi grandi
-    $('tol').value = Math.min(0.2, Math.max(0.01, +(info.diag * 1e-4).toFixed(3)));
-    status(closed ? 'Mesh caricata. Premi «Analizza mesh».' : 'Mesh aperta: lo STEP sarà una superficie, non un solido.', closed ? '' : 'warn');
-    analyse();   // analisi automatica con i parametri suggeriti
-  } catch (e) { status('Errore: ' + e.message, 'err'); }
+    status(closed ? t('loaded') : t('open_warn'), closed ? '' : 'warn');
+    await analyse();
+  } catch (e) { status(t('err') + errText(e), 'err'); }
   finally { busy(false); }
 }
+const loadFile = async f => loadBuffer(f.name, await f.arrayBuffer());
 $('open').onclick = () => $('file').click();
 $('file').onchange = e => { const f = e.target.files[0]; if (f) loadFile(f); e.target.value = ''; };
-const view = $('view');
 ['dragenter', 'dragover'].forEach(ev => addEventListener(ev, e => { e.preventDefault(); $('drop').classList.add('over'); }));
 ['dragleave', 'drop'].forEach(ev => addEventListener(ev, e => { e.preventDefault(); $('drop').classList.remove('over'); }));
 addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) loadFile(f); });
+$('repair').onclick = async () => {
+  try {
+    busy(true);
+    const r = await call({ cmd: 'repair' });
+    onMesh(r); status(r.holes ? t('repaired', { h: r.holes, a: r.added }) : t('no_holes'));
+    await analyse();
+  } catch (e) { status(t('err') + errText(e), 'err'); } finally { busy(false); }
+};
 
 // ============================ Analisi ============================
+function opts() {
+  return { tol: +$('tol').value, angle: +$('ang').value, cylinders: $('o_cyl').checked, cones: $('o_cone').checked, spheres: $('o_sph').checked, tori: $('o_tor').checked, threads: $('o_thr').checked, nurbs: $('o_nurbs').checked, snap: $('o_snap').checked };
+}
+function onResult(r) {
+  res = r; sel.clear();
+  if (r.selected != null) sel.add(r.selected);
+  showEdgesObj(r.edges); showResults(); updateSel();
+  $('results').hidden = false; $('editsec').hidden = false; $('step').disabled = false;
+  try { $('share').hidden = !(navigator.canShare && navigator.canShare({ files: [new File(['x'], 'x.step')] })); } catch { $('share').hidden = true; }
+}
 async function analyse() {
   try {
-    busy(true); $('analyse').disabled = true; status('Riconoscimento superfici…');
-    const opts = { tol: +$('tol').value, angle: +$('ang').value, cylinders: $('cyl').checked, spheres: $('sph').checked };
-    const r = await call({ cmd: 'analyse', opts });
-    analysedTol = opts.tol; regions = r.regions; faceOf = r.face;
-    paint(); showEdges(r.edges); $('pick').hidden = true;
-    const s = r.stats;
-    $('legend').innerHTML = [['plane', 'Piani', s.plane], ['cylinder', 'Cilindri', s.cylinder], ['sphere', 'Sfere', s.sphere], ['freeform', 'Freeform (triangoli)', s.freeformTris]]
-      .map(([k, l, n]) => `<div><span class="sw" style="background:${BASE[k]}"></span>${l}<b>${n}</b></div>`).join('');
-    // tabella fori/alberi raggruppata per diametro (tolleranza 0,01 mm)
-    const groups = new Map();
-    for (const g of regions.filter(x => x.type === 'cylinder')) {
-      const key = (g.hole ? 'Foro' : 'Albero/raccordo') + '|' + (2 * g.radius).toFixed(2);
-      groups.set(key, (groups.get(key) || 0) + 1);
-    }
-    $('holes').innerHTML = groups.size ? '<table><tr><th>Cilindri</th><th>Ø mm</th><th>n.</th></tr>' +
-      [...groups].sort((a, b) => parseFloat(a[0].split('|')[1]) - parseFloat(b[0].split('|')[1])).map(([k, n]) => { const [t, d] = k.split('|'); return `<tr><td>${t}</td><td>${d.replace('.', ',')}</td><td>${n}</td></tr>`; }).join('') + '</table>' : '';
-    $('results').hidden = false; $('step').disabled = false;
-    const freePct = info.nT ? s.freeformTris / info.nT : 0;
-    status(`Analisi completata in ${fmt(r.ms / 1000, 2)} s.` + (freePct > 0.5 ? ' Molte zone freeform: prova ad aumentare la tolleranza.' : ''), freePct > 0.5 ? 'warn' : '');
-  } catch (e) { status('Errore: ' + e.message, 'err'); }
+    busy(true); $('analyse').disabled = true; status(t('analysing'));
+    const o = opts(); const r = await call({ cmd: 'analyse', opts: o });
+    analysedTol = o.tol; $('maxerr').value = +(o.tol * 5).toFixed(3); onResult(r); $('undo').disabled = true;
+    const freePct = info.nT ? r.stats.freeformTris / info.nT : 0;
+    status(t('done', { s: fmt(r.ms / 1000, 2) }) + (freePct > 0.5 ? t('many_free') : ''), freePct > 0.5 ? 'warn' : '');
+  } catch (e) { status(t('err') + errText(e), 'err'); }
   finally { busy(false); $('analyse').disabled = false; }
 }
 $('analyse').onclick = analyse;
 
-// ============================ Export STEP ============================
-$('step').onclick = async () => {
+function showResults() {
+  const s = res.stats;
+  $('legend').innerHTML = ['plane', 'cylinder', 'cone', 'sphere', 'torus', 'thread', 'bspline', 'freeform'].filter(k => s[k] || ['plane', 'cylinder'].includes(k))
+    .map(k => `<div><span class="sw" style="background:${BASE[k]}"></span>${t('t_' + k + '_p')}<b>${k === 'freeform' ? s.freeformTris : s[k]}</b></div>`).join('');
+  // fori raggruppati per diametro, passante/cieco e profondità
+  const g = new Map();
+  for (const h of res.holes) { const k = [h.diameter.toFixed(2), h.through ? 1 : 0, h.through ? '' : h.depth.toFixed(1)].join('|'); g.set(k, (g.get(k) || 0) + 1); }
+  const shafts = new Map();
+  for (const r of res.regions) if (r.type === 'cylinder' && !r.hole) { const k = (2 * r.radius).toFixed(2); shafts.set(k, (shafts.get(k) || 0) + 1); }
+  let html = '';
+  if (g.size) html += `<table><tr><th>${t('h_holes')}</th><th class="r">${t('h_dia')}</th><th class="r">${t('h_depth')}</th><th class="r">${t('h_n')}</th></tr>` +
+    [...g].sort((a, b) => parseFloat(a[0]) - parseFloat(b[0])).map(([k, n]) => { const [d, th, dp] = k.split('|'); return `<tr><td>${th === '1' ? t('through') : t('blind')}</td><td class="r">${fmt(+d, 2)}</td><td class="r">${dp ? fmt(+dp, 1) : '—'}</td><td class="r">${n}</td></tr>`; }).join('') + '</table>';
+  if (shafts.size) html += `<table><tr><th>${t('shafts')}</th><th class="r">${t('h_dia')}</th><th class="r">${t('h_n')}</th></tr>` + [...shafts].sort((a, b) => a[0] - b[0]).map(([d, n]) => `<tr><td></td><td class="r">${fmt(+d, 2)}</td><td class="r">${n}</td></tr>`).join('') + '</table>';
+  $('holes').innerHTML = html;
+  const th = res.regions.filter(r => r.type === 'thread');
+  $('threads').innerHTML = th.length ? `<table><tr><th>${t('h_threads')}</th><th class="r">${t('k_pitch')}</th><th class="r">${t('k_len')}</th></tr>` + th.map(r => `<tr><td>${r.label} ${t(r.internal ? 'internal' : 'external')}</td><td class="r">${fmt(r.pitch, 2)}</td><td class="r">${fmt(r.length, 1)}</td></tr>`).join('') + '</table>' : '';
+  renderBodies(res.bodies);
+}
+
+// ---- corpi: includi/escludi e rinomina (nome usato nello STEP) ----
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function renderBodies(list) {
+  $('bodysec').hidden = list.length < 2 && !(list[0] && !/^Body1$/.test(list[0].name));
+  $('bodies').innerHTML = `<tr><th></th><th>${t('b_name')}</th><th class="r">${t('f_tris')}</th></tr>` + list.map((b, i) =>
+    `<tr><td><input type="checkbox" data-b="${i}" ${bodyCfg[i] && bodyCfg[i].include === false ? '' : 'checked'}></td><td><input type="text" data-bn="${i}" value="${esc(bodyCfg[i] ? bodyCfg[i].name : b.name)}"></td><td class="r">${b.nTris.toLocaleString()}<br><span class="hint">${b.closed ? t('b_closed') : t('b_open')}</span></td></tr>`).join('');
+  $('bodies').querySelectorAll('[data-b]').forEach(el => { el.onchange = () => { bodyCfg[+el.dataset.b].include = el.checked; }; });
+  $('bodies').querySelectorAll('[data-bn]').forEach(el => { el.oninput = () => { bodyCfg[+el.dataset.bn].name = el.value; }; });
+}
+
+// ============================ Editing ============================
+$('apply').onclick = async () => {
   try {
-    busy(true); status('Generazione STEP…');
-    const r = await call({ cmd: 'step', opts: { tol: analysedTol } });
-    const url = URL.createObjectURL(new Blob([r.text], { type: 'application/step' }));
-    const a = Object.assign(document.createElement('a'), { href: url, download: r.name + '.step' });
-    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000);
-    status(`STEP salvato: ${r.faces} facce (${r.edges.circle} spigoli circolari, ${r.edges.line} rettilinei)` + (r.solids ? `, ${r.solids} solido/i.` : ', superficie aperta.'));
-  } catch (e) { status('Errore: ' + e.message, 'err'); }
-  finally { busy(false); }
+    busy(true);
+    const r = await call({ cmd: 'edit', ids: [...sel], as: $('as').value, maxErr: +$('maxerr').value });
+    onResult(r); $('undo').disabled = false; status(t('edited'));
+  } catch (e) { status(t('err') + errText(e), 'err'); } finally { busy(false); }
 };
+$('undo').onclick = async () => {
+  try { busy(true); const r = await call({ cmd: 'undo' }); onResult(r); $('undo').disabled = !r.canUndo; status(t('undone')); }
+  catch (e) { status(t('err') + errText(e), 'err'); } finally { busy(false); }
+};
+
+// ============================ Export ============================
+function download(data, name, type) {
+  const url = URL.createObjectURL(new Blob([data], { type }));
+  const a = Object.assign(document.createElement('a'), { href: url, download: name });
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+async function makeStep() {
+  const r = await call({ cmd: 'step', opts: { tol: analysedTol, bodies: bodyCfg } });
+  status(r.solids ? t('step_ok', { f: r.faces, c: r.edges.circle, l: r.edges.line, s: r.solids }) : t('step_surf', { f: r.faces }));
+  return r;
+}
+$('step').onclick = async () => {
+  try { busy(true); status(t('step_gen')); const r = await makeStep(); download(r.text, r.name + '.step', 'application/step'); }
+  catch (e) { status(t('err') + errText(e), 'err'); } finally { busy(false); }
+};
+$('share').onclick = async () => {
+  try {
+    busy(true); const r = await makeStep();
+    await navigator.share({ files: [new File([r.text], r.name + '.step', { type: 'application/step' })], title: r.name + '.step' });
+  } catch (e) { if (e.name !== 'AbortError') status(t('err') + errText(e), 'err'); } finally { busy(false); }
+};
+$('stl').onclick = async () => { try { busy(true); const r = await call({ cmd: 'stl' }); download(r.buf, r.name + '_mesh2step.stl', 'model/stl'); } catch (e) { status(t('err') + errText(e), 'err'); } finally { busy(false); } };
+$('obj').onclick = async () => { try { busy(true); const r = await call({ cmd: 'obj' }); download(r.text, r.name + '_mesh2step.obj', 'model/obj'); } catch (e) { status(t('err') + errText(e), 'err'); } finally { busy(false); } };
+// report CSV (in italiano separatore ';' e virgola decimale, come si aspetta Excel)
+$('csv').onclick = () => {
+  const it = lang === 'it', sep = it ? ';' : ',', n = x => (it ? String(+x.toFixed(4)).replace('.', ',') : String(+x.toFixed(4)));
+  const rows = [t('csv_head')];
+  for (const h of res.holes) rows.push(['hole', n(h.diameter), n(h.depth), h.through ? '1' : '0', ...h.axis.map(n), ...h.origin.map(n), ''].join(sep));
+  for (const r of res.regions) {
+    if (r.type === 'cylinder' && !r.hole) rows.push(['shaft', n(2 * r.radius), n(r.height), '', ...r.axis.map(n), ...r.origin.map(n), ''].join(sep));
+    if (r.type === 'thread') rows.push(['thread', n(r.major), n(r.length), '', ...r.axis.map(n), ...r.origin.map(n), `${r.label} P${r.pitch} ${t('hand_' + r.hand)} ${t(r.internal ? 'internal' : 'external')}`].join(sep));
+    if (r.type === 'cone') rows.push(['cone', '', '', '', ...r.axis.map(n), ...r.apex.map(n), `${n(r.alpha * 360 / Math.PI)}°`].join(sep));
+  }
+  download('﻿' + rows.join('\r\n') + '\r\n', (fileName.replace(/\.[^.]+$/, '') || 'mesh') + '_report.csv', 'text/csv');
+};
+
+// ============================ Integrazione e PWA ============================
+// 1) postMessage da un'altra app (es. 3D STL Multipart Maker che apre Mesh2STEP con window.open):
+//    w.postMessage({ type: 'mesh2step:open', name: 'pezzo.stl', buffer: ArrayBuffer }, '*')
+addEventListener('message', e => { const d = e.data; if (d && d.type === 'mesh2step:open' && d.buffer && d.name) loadBuffer(d.name, d.buffer); });
+// 2) parametro ?url=… (file servito con CORS)
+const qp = new URLSearchParams(location.search).get('url');
+if (qp) fetch(qp).then(r => r.arrayBuffer()).then(b => loadBuffer(decodeURIComponent(qp.split('/').pop().split('?')[0]) || 'mesh.stl', b)).catch(e => status(t('err') + e.message, 'err'));
+// 3) PWA installata: apertura dei file .stl/.obj/.3mf dal sistema (File Handling API)
+if ('launchQueue' in window) window.launchQueue.setConsumer(async p => { if (p.files && p.files.length) loadFile(await p.files[0].getFile()); });
+// 4) service worker per l'uso offline (solo http/https, non nella build single-file)
+if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !document.getElementById('worker-src')) navigator.serviceWorker.register('sw.js').catch(() => {});
+// 5) segnala all'opener che l'app è pronta a ricevere un file
+if (window.opener) try { window.opener.postMessage({ type: 'mesh2step:ready', version: VERSION }, '*'); } catch { /* opener di altra origine */ }
+
+$('ver').textContent = 'v' + VERSION;
+applyTheme(store.get('theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'));
+applyLang();

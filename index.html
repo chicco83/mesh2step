@@ -1,7 +1,10 @@
 <!doctype html>
 <!--
   Mesh2STEP — index.html
-  Versione: 1.0.0 — 2026-10-05 17:10 (Europe/Rome)
+  Versione: 1.3.0 — 2026-10-06 13:40 (Europe/Rome)
+  Versione precedente archiviata: archive/index_v1.0.1_20261006-1310.html
+  (2026-10-06: nuova UI con editing facce, corpi, report, export STL/OBJ, deviazione, viste, IT/EN,
+   tema chiaro, PWA offline con three.js locale in vendor/).
   Entry point (GitHub Pages / sviluppo). La build portabile single-file è in dist/.
 -->
 <html lang="it">
@@ -9,124 +12,213 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#101214">
-<link rel="icon" href="data:,">
 <title>Mesh2STEP</title>
-<meta name="description" content="Converte mesh STL/OBJ/3MF in solidi CAD STEP con piani, cilindri e sfere reali. Tutto nel browser, nessun upload.">
-<!-- three.js da CDN tramite import map (unica dipendenza esterna) -->
+<meta name="description" content="Converte mesh STL/OBJ/3MF in solidi CAD STEP con piani, cilindri, coni, sfere, tori e B-spline reali. Tutto nel browser, nessun upload.">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<!-- three.js locale (offline): vendor/ -->
 <script type="importmap">
 { "imports": {
-  "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+  "three": "./vendor/three.module.min.js",
+  "three/addons/controls/OrbitControls.js": "./vendor/OrbitControls.js"
 } }
 </script>
 <style>
-  /* ===== Token colore (tema scuro) ===== */
+  /* ===== Token colore: tema scuro (default) ===== */
   :root {
     --bg: #101214; --panel: #16191c; --line: #262a2f; --field: #1d2125; --fg: #e3e6e8; --dim: #8a929a;
-    --accent: #3fd0b6; --accent-ink: #062b25; --warn: #f0b23c; --err: #ef5b5b;
-    --c-plane: #7d93b8; --c-cyl: #3fd0b6; --c-sph: #f39a4a; --c-free: #c46bd6;
+    --accent: #3fd0b6; --accent-ink: #062b25; --warn: #f0b23c; --err: #ef5b5b; --sel: #ffd84a;
+    --view-bg: #101214;
+  }
+  /* ===== Tema chiaro ===== */
+  :root[data-theme="light"] {
+    --bg: #f4f5f6; --panel: #ffffff; --line: #dde1e5; --field: #f1f3f5; --fg: #1d2125; --dim: #5f6872;
+    --accent: #0f8f7a; --accent-ink: #ffffff; --warn: #a86a00; --err: #c73535; --sel: #d49b00;
+    --view-bg: #e9ecef;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; background: var(--bg); color: var(--fg); font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  body { display: grid; grid-template-columns: 320px 1fr; overflow: hidden; }
+  body { display: grid; grid-template-columns: 340px 1fr; overflow: hidden; }
 
   /* ===== Sidebar ===== */
   #side { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; min-height: 0; }
-  header { padding: 16px; border-bottom: 1px solid var(--line); }
+  header { padding: 14px 16px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
+  header .brand { margin-right: auto; }
   header h1 { font-size: 20px; font-weight: 650; letter-spacing: .01em; }
   header h1 span { color: var(--accent); }
-  header p { color: var(--dim); font-size: 12px; margin-top: 2px; }
-  section { padding: 14px 16px; border-bottom: 1px solid var(--line); display: grid; gap: 10px; }
+  header p { color: var(--dim); font-size: 12px; margin-top: 1px; }
+  .chip { border: 1px solid var(--line); background: var(--field); color: var(--fg); border-radius: 999px; padding: 4px 10px; min-height: 30px; font-size: 12px; }
+  section { padding: 12px 16px; border-bottom: 1px solid var(--line); display: grid; gap: 9px; }
+  section[hidden] { display: none; }
   h2 { font-size: 10.5px; font-weight: 650; text-transform: uppercase; letter-spacing: .1em; color: var(--dim); }
   .row { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
-  .dim { color: var(--dim); }
-  label.chk { display: flex; align-items: center; gap: 8px; cursor: pointer; }
-  input[type=number] { width: 90px; background: var(--field); border: 1px solid var(--line); color: var(--fg); border-radius: 6px; padding: 6px 8px; font: inherit; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  .btns button { flex: 1 1 auto; }
+  label.chk { display: flex; align-items: center; gap: 7px; cursor: pointer; }
+  input[type=number], input[type=text], select { background: var(--field); border: 1px solid var(--line); color: var(--fg); border-radius: 6px; padding: 6px 8px; font: inherit; }
+  input[type=number] { width: 90px; }
   input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; }
-  button { cursor: pointer; font: inherit; border-radius: 6px; padding: 9px 12px; border: 1px solid var(--accent); background: transparent; color: var(--accent); min-height: 38px; }
+  button { cursor: pointer; font: inherit; border-radius: 6px; padding: 8px 11px; border: 1px solid var(--accent); background: transparent; color: var(--accent); min-height: 36px; }
   button.primary { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  button.ghost { border-color: var(--line); color: var(--fg); }
+  button.on { background: color-mix(in srgb, var(--accent) 18%, transparent); }
   button:disabled { opacity: .4; cursor: not-allowed; }
-  button:hover:not(:disabled) { filter: brightness(1.12); }
+  button:hover:not(:disabled) { filter: brightness(1.1); }
   .kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; font-variant-numeric: tabular-nums; }
-  .kv dt { color: var(--dim); } .kv dd { text-align: right; }
-  .legend { display: grid; gap: 4px; }
+  .kv dt { color: var(--dim); } .kv dd { text-align: right; overflow-wrap: anywhere; }
+  .legend { display: grid; gap: 3px; }
   .legend div { display: flex; align-items: center; gap: 8px; }
   .sw { width: 12px; height: 12px; border-radius: 3px; flex: none; }
   .legend b { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; }
   table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
   td, th { padding: 3px 4px; border-bottom: 1px solid var(--line); text-align: left; }
   th { color: var(--dim); font-weight: 500; font-size: 11px; }
-  td:last-child, th:last-child { text-align: right; }
+  td.r, th.r { text-align: right; }
+  .bodies input[type=text] { width: 100%; }
+  .bodies td:first-child { width: 24px; }
   #status { min-height: 1.4em; color: var(--dim); }
   #status.err { color: var(--err); } #status.warn { color: var(--warn); }
-  footer { padding: 14px 16px; color: var(--dim); font-size: 11.5px; display: grid; gap: 6px; }
+  .hint { color: var(--dim); font-size: 12px; }
+  footer { padding: 12px 16px; color: var(--dim); font-size: 11.5px; display: grid; gap: 6px; }
 
   /* ===== Viewer ===== */
-  #view { position: relative; min-width: 0; min-height: 0; }
+  #view { position: relative; min-width: 0; min-height: 0; background: var(--view-bg); }
   #view canvas { display: block; width: 100%; height: 100%; touch-action: none; }
   #drop { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; color: var(--dim); font-size: 15px; text-align: center; padding: 24px; }
   #drop.over { background: color-mix(in srgb, var(--accent) 12%, transparent); outline: 2px dashed var(--accent); outline-offset: -12px; color: var(--fg); }
-  #pick { position: absolute; left: 12px; bottom: 12px; background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; max-width: min(360px, calc(100% - 24px)); }
-  #hint { position: absolute; right: 12px; bottom: 12px; color: var(--dim); font-size: 11px; }
-  #busy { position: absolute; top: 12px; right: 12px; display: none; }
+  .overlay { position: absolute; background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  #pick { left: 12px; bottom: 12px; max-width: min(380px, calc(100% - 24px)); }
+  #toolbar { left: 12px; top: 12px; display: flex; gap: 4px; flex-wrap: wrap; padding: 4px; max-width: calc(100% - 60px); }
+  #toolbar button { min-height: 30px; padding: 4px 9px; font-size: 12px; border-color: var(--line); color: var(--fg); }
+  #toolbar button.on { border-color: var(--accent); color: var(--accent); }
+  #devlegend { right: 12px; bottom: 12px; font-size: 11px; }
+  #devlegend .bar { width: 160px; height: 10px; border-radius: 3px; background: linear-gradient(90deg, #2bb673, #f0d23c, #ef5b5b); margin: 4px 0 2px; }
+  #busy { position: absolute; top: 14px; right: 14px; display: none; }
   #busy.on { display: block; width: 22px; height: 22px; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
   /* ===== Mobile: viewer sopra, pannello sotto ===== */
   @media (max-width: 760px) {
-    body { grid-template-columns: 1fr; grid-template-rows: 52vh 1fr; }
+    body { grid-template-columns: 1fr; grid-template-rows: 50vh 1fr; }
     #view { grid-row: 1; } #side { grid-row: 2; border-right: 0; border-top: 1px solid var(--line); }
-    #hint { display: none; }
+    #devlegend { display: none; }
+    #pick { font-size: 11px; max-width: 62%; padding: 6px 8px; }
+    #toolbar button { min-height: 28px; padding: 3px 7px; }
   }
+  #theme { font-size: 15px; line-height: 1; }
 </style>
 </head>
 <body>
 <aside id="side">
   <header>
-    <h1>Mesh<span>2</span>STEP</h1>
-    <p>Da mesh triangolare a solido CAD · <span id="ver"></span></p>
+    <div class="brand">
+      <h1>Mesh<span>2</span>STEP</h1>
+      <p><span data-i18n="tagline">Da mesh triangolare a solido CAD</span> · <span id="ver"></span></p>
+    </div>
+    <button id="theme" class="chip" title="Tema">◐</button>
+    <button id="lang" class="chip">EN</button>
   </header>
 
+  <!-- ===== File ===== -->
   <section>
-    <h2>File</h2>
-    <button id="open" class="primary">Apri mesh (STL, OBJ, 3MF)</button>
+    <h2 data-i18n="s_file">File</h2>
+    <button id="open" class="primary" data-i18n="open">Apri mesh (STL, OBJ, 3MF)</button>
     <input id="file" type="file" accept=".stl,.obj,.3mf" hidden>
     <dl class="kv" id="meshinfo" hidden></dl>
+    <button id="repair" class="ghost" hidden data-i18n="repair">Chiudi i buchi della mesh</button>
   </section>
 
+  <!-- ===== Riconoscimento ===== -->
   <section>
-    <h2>Riconoscimento</h2>
-    <div class="row"><span>Tolleranza (mm)</span><input id="tol" type="number" min="0.001" max="2" step="0.005" value="0.02"></div>
-    <div class="row"><span>Angolo (°)</span><input id="ang" type="number" min="0.1" max="10" step="0.1" value="1"></div>
-    <label class="chk"><input id="cyl" type="checkbox" checked> Cilindri (fori, alberi, raccordi)</label>
-    <label class="chk"><input id="sph" type="checkbox" checked> Sfere</label>
-    <button id="analyse" disabled>Analizza mesh</button>
+    <h2 data-i18n="s_detect">Riconoscimento</h2>
+    <div class="row"><span data-i18n="tol">Tolleranza (mm)</span><input id="tol" type="number" min="0.001" max="2" step="0.005" value="0.02"></div>
+    <div class="row"><span data-i18n="angle">Angolo (°)</span><input id="ang" type="number" min="0.1" max="10" step="0.1" value="1"></div>
+    <div class="grid2">
+      <label class="chk"><input id="o_cyl" type="checkbox" checked> <span data-i18n="t_cylinder_p">Cilindri</span></label>
+      <label class="chk"><input id="o_cone" type="checkbox" checked> <span data-i18n="t_cone_p">Coni</span></label>
+      <label class="chk"><input id="o_sph" type="checkbox" checked> <span data-i18n="t_sphere_p">Sfere</span></label>
+      <label class="chk"><input id="o_tor" type="checkbox" checked> <span data-i18n="t_torus_p">Tori</span></label>
+      <label class="chk"><input id="o_thr" type="checkbox" checked> <span data-i18n="t_thread_p">Filettature</span></label>
+      <label class="chk"><input id="o_nurbs" type="checkbox" checked> <span data-i18n="t_bspline_p">B-spline</span></label>
+    </div>
+    <label class="chk"><input id="o_snap" type="checkbox"> <span data-i18n="snap">Arrotonda a valori nominali (Ø, assi, angoli)</span></label>
+    <button id="analyse" disabled data-i18n="analyse">Analizza mesh</button>
   </section>
 
+  <!-- ===== Risultato ===== -->
   <section id="results" hidden>
-    <h2>Risultato</h2>
+    <h2 data-i18n="s_result">Risultato</h2>
     <div class="legend" id="legend"></div>
     <div id="holes"></div>
+    <div id="threads"></div>
+    <button id="csv" class="ghost" data-i18n="csv">Scarica report CSV</button>
   </section>
 
+  <!-- ===== Modifica facce ===== -->
+  <section id="editsec" hidden>
+    <h2 data-i18n="s_edit">Modifica facce</h2>
+    <div class="hint" data-i18n="edit_hint">Tocca una faccia per selezionarla; con «Selezione multipla» (o Shift/Ctrl+clic) ne aggiungi altre.</div>
+    <div class="btns">
+      <button id="multi" class="ghost" data-i18n="multi">Selezione multipla</button>
+      <button id="clearsel" class="ghost" data-i18n="clearsel">Deseleziona</button>
+    </div>
+    <div id="selinfo" class="hint"></div>
+    <div class="row">
+      <select id="as">
+        <option value="auto" data-i18n="as_auto">Automatico (unisci)</option>
+        <option value="plane" data-i18n="t_plane">Piano</option>
+        <option value="cylinder" data-i18n="t_cylinder">Cilindro</option>
+        <option value="cone" data-i18n="t_cone">Cono</option>
+        <option value="sphere" data-i18n="t_sphere">Sfera</option>
+        <option value="torus" data-i18n="t_torus">Toro</option>
+        <option value="bspline" data-i18n="t_bspline">B-spline</option>
+        <option value="freeform" data-i18n="t_freeform">Freeform</option>
+      </select>
+      <button id="apply" disabled data-i18n="apply">Applica</button>
+    </div>
+    <div class="row"><span data-i18n="maxerr">Scarto max accettato (mm)</span><input id="maxerr" type="number" min="0.001" step="0.01" value="0.1"></div>
+    <button id="undo" class="ghost" disabled data-i18n="undo">Annulla ultima modifica</button>
+  </section>
+
+  <!-- ===== Corpi ===== -->
+  <section id="bodysec" hidden>
+    <h2 data-i18n="s_bodies">Corpi</h2>
+    <table class="bodies" id="bodies"></table>
+  </section>
+
+  <!-- ===== Export ===== -->
   <section>
-    <h2>Export</h2>
-    <button id="step" class="primary" disabled>Scarica STEP</button>
+    <h2 data-i18n="s_export">Export</h2>
+    <button id="step" class="primary" disabled data-i18n="step">Scarica STEP</button>
+    <div class="btns">
+      <button id="stl" class="ghost" disabled>STL</button>
+      <button id="obj" class="ghost" disabled data-i18n="obj">OBJ (gruppi)</button>
+      <button id="share" class="ghost" hidden data-i18n="share">Condividi STEP</button>
+    </div>
     <div id="status" role="status"></div>
   </section>
 
   <footer>
-    <div>I file restano sul tuo dispositivo: l'elaborazione avviene nel browser.</div>
-    <div>Ruota: trascina · Zoom: rotella/pizzica · Sposta: tasto destro o Shift · Adatta: F · Clic su una faccia per i dettagli</div>
+    <div data-i18n="privacy">I file restano sul tuo dispositivo: l'elaborazione avviene nel browser.</div>
+    <div data-i18n="nav">Ruota: trascina · Zoom: rotella/pizzica · Sposta: tasto destro o Shift · Adatta: F</div>
   </footer>
 </aside>
 
 <main id="view">
   <canvas id="c"></canvas>
-  <div id="drop">Trascina qui un file STL, OBJ o 3MF<br>oppure usa «Apri mesh»</div>
-  <div id="pick" hidden></div>
+  <div id="drop" data-i18n="drop">Trascina qui un file STL, OBJ o 3MF oppure usa «Apri mesh»</div>
+  <div id="toolbar" class="overlay">
+    <button data-view="iso">Iso</button>
+    <button data-view="top" data-i18n="v_top">Alto</button>
+    <button data-view="front" data-i18n="v_front">Fronte</button>
+    <button data-view="right" data-i18n="v_right">Destra</button>
+    <button id="t_edges" class="on" data-i18n="v_edges">Contorni</button>
+    <button id="t_dev" data-i18n="v_dev">Deviazione</button>
+  </div>
+  <div id="pick" class="overlay" hidden></div>
+  <div id="devlegend" class="overlay" hidden><span data-i18n="dev_title">Deviazione mesh ↔ superficie</span><div class="bar"></div><div class="row"><span>0</span><span id="devmax"></span></div></div>
   <div id="busy"></div>
-  <div id="hint"></div>
 </main>
 
 <script type="module" src="src/app.js"></script>
