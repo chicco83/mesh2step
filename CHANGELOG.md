@@ -1,5 +1,13 @@
 # CHANGELOG — Mesh2STEP
-Versione documento: 1.3.0 — 2026-10-06 13:45
+Versione documento: 1.3.0 — 2026-10-06 14:10
+
+## 6. [1.3.0 · documentazione] — 2026-10-06 14:10 — Ripresa del lavoro da Claude Code
+Codice dell'app invariato (resta 1.3.0, commit `61c8f81`).
+- `CLAUDE.md` riscritto: stato del progetto, ambiente (Windows/PowerShell), mappa del codice e ordine degli stadi,
+  risultati attesi dei test, insidie note, prossimi passi in ordine di priorità.
+- `CONTEXT.md`: cronologia delle sessioni e problemi aperti.
+- `IMPROVEMENTS.md`, `MANUAL.md`, `README.md`: allineati (script PowerShell, prossimi passi).
+- Aggiunto `desktop/build-desktop.ps1` (build dell'exe da PowerShell senza Git Bash).
 
 ## 5. [1.3.0] — 2026-10-06 13:45 — Piattaforma
 **Aggiunto**

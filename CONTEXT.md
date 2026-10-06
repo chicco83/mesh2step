@@ -1,5 +1,5 @@
 # CONTEXT — Mesh2STEP
-Versione documento: 1.3.0 — 2026-10-06 13:45
+Versione documento: 1.3.0 — 2026-10-06 14:10
 
 ## Scopo
 Web app che converte mesh triangolari (STL, OBJ, 3MF) in file STEP con **geometria CAD reale**:
@@ -70,3 +70,17 @@ index.html ── src/app.js (UI, viewer three.js, i18n, editing, export, API in
 - Filettature non sostituite dal cilindro nominale; B-spline solo per zone "campo di altezze".
 - Riparazione solo dei buchi (non di spigoli non-manifold o auto-intersezioni).
 - Exe Windows compilato ma non ancora provato su Windows.
+
+## Cronologia delle sessioni
+| Data | Sessione | Esito |
+|---|---|---|
+| 2026-10-05 | Cowork cloud | Analisi del sito di riferimento, v1.0.0 (piani, cilindri, sfere, STEP), commit `729f9ed` caricato dall'utente |
+| 2026-10-06 mattina | Cowork cloud | v1.0.1 README completo; v1.1.0–1.3.0 tutte le migliorie (commit `e1e10bb`, `61c8f81`), consegnate come git bundle perché la sessione non poteva fare push; pubblicate dall'utente; Pages verificato online |
+| 2026-10-06 14:10 | Cowork cloud | Documentazione per riprendere il lavoro da Claude Code |
+
+## Problemi aperti
+- Exe Windows mai avviato su Windows (compilato da Linux con `EnableWindowsTargeting`).
+- Esito della CI `ci.yml` su GitHub non ancora controllato.
+- Sfere spurie nelle zone di uscita dei filetti (`bolt_m6`: 8 sfere piccole).
+- Toro e sfera completi esportati sfaccettati; filettature sfaccettate.
+- Riparazione limitata ai buchi.

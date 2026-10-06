@@ -1,5 +1,5 @@
 # MIGLIORIE — Mesh2STEP
-Versione documento: 1.3.0 — 2026-10-06 13:45
+Versione documento: 1.3.0 — 2026-10-06 14:10
 <!-- [2026-10-06 13:45] versione precedente 1.0.0 (2026-10-05 17:10): elenco proposte tutte "da fare";
      aggiornato con lo stato di realizzazione. -->
 
@@ -28,8 +28,12 @@ Stato: ✅ fatto · 🟡 parziale · ⏸️ valutato e rinviato.
 | 18 | IT/EN, tema chiaro, viste | ✅ | 1.2.0 | |
 
 ## Prossimi passi proposti
-1. Filettature: sostituire la zona filettata con il cilindro nominale quando confina con piani ⟂ asse.
-2. Riparazione non-manifold e auto-intersezioni.
-3. Toro/sfera completi divisi in due facce invece che sfaccettati.
-4. Pulsante "Converti in STEP" in 3D STL Multipart Maker che apre Mesh2STEP via `postMessage`.
-5. Report PDF con disegno quotato dei fori.
+<!-- [2026-10-06 14:10] elenco precedente (5 voci) integrato con verifica exe/CI e sfere spurie; ordine allineato a CLAUDE.md §8 -->
+1. Provare l'exe Windows (Actions → *desktop*, o `desktop\build-desktop.ps1`).
+2. Controllare l'esito della CI `ci.yml`.
+3. Filettature: sostituire la zona filettata con il cilindro nominale quando confina con piani ⟂ asse.
+4. Ridurre le sfere spurie nelle zone di uscita del filetto.
+5. Toro/sfera completi divisi in due facce invece che sfaccettati.
+6. Riparazione non-manifold e auto-intersezioni.
+7. Pulsante "Converti in STEP" in 3D STL Multipart Maker che apre Mesh2STEP via `postMessage`.
+8. Report PDF con disegno quotato dei fori.

@@ -1,5 +1,5 @@
 # Mesh2STEP
-Versione: 1.3.0 — 2026-10-06 13:45
+Versione: 1.3.0 — 2026-10-06 14:10
 <!-- [2026-10-06 13:45] Versione precedente 1.0.1 (2026-10-06 13:10): README delle funzioni v1.0
      (piani, cilindri, sfere); aggiornato con tutte le funzioni v1.1–v1.3. -->
 
@@ -160,7 +160,7 @@ src/app.js            interfaccia, viewer, i18n, integrazione
 vendor/               three.js 0.169 + OrbitControls (MIT)
 build.mjs             build single-file offline in dist/
 dist/                 mesh2step_v<versione>_<AAAAMMGG-HHMM>.html
-desktop/              app Windows WebView2 (C#/.NET 8) + build-desktop.sh
+desktop/              app Windows WebView2 (C#/.NET 8) + build-desktop.ps1 / .sh
 tests/                make_samples.py · run_core.js · check_step.py · samples/
 archive/              versioni precedenti dei file riscritti
 .github/workflows/    ci.yml · desktop.yml
@@ -173,7 +173,7 @@ python3 tests/make_samples.py     # mesh di prova (manifold3d)
 node tests/run_core.js            # analisi + STEP in tests/out (+ *_riparata.step per mesh aperte)
 python3 tests/check_step.py       # validazione OpenCASCADE (exit 1 se uno STEP non è valido)
 node build.mjs                    # build portabile
-desktop/build-desktop.sh          # exe Windows (serve .NET 8 SDK)
+desktop/build-desktop.sh          # exe Windows (serve .NET 8 SDK); da PowerShell: .\desktop\build-desktop.ps1
 ```
 Regole di versioning, documentazione e git: [CLAUDE.md](CLAUDE.md).
 
@@ -193,7 +193,7 @@ Stato di tutte le migliorie: [IMPROVEMENTS.md](IMPROVEMENTS.md).
 | [CONTEXT.md](CONTEXT.md) | Scopo, analisi del sito di riferimento, architettura, algoritmo, decisioni |
 | [CHANGELOG.md](CHANGELOG.md) | Storico delle versioni |
 | [IMPROVEMENTS.md](IMPROVEMENTS.md) | Migliorie e stato |
-| [CLAUDE.md](CLAUDE.md) | Istruzioni per le sessioni di sviluppo |
+| [CLAUDE.md](CLAUDE.md) | Istruzioni per le sessioni di sviluppo: stato, ambiente, mappa del codice, test attesi, prossimi passi |
 
 ---
 Ispirato a mesh2solid.thavision.com; implementazione indipendente (clean-room), nessun codice, testo o asset dell'originale.

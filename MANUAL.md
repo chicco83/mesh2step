@@ -1,5 +1,5 @@
 # MANUALE — Mesh2STEP
-Versione documento: 1.3.0 — 2026-10-06 13:45
+Versione documento: 1.3.0 — 2026-10-06 14:10
 <!-- [2026-10-06 13:45] versione precedente 1.0.0 (2026-10-05 17:10) nel repository git (commit 729f9ed). -->
 
 ## 1. Avvio
@@ -8,7 +8,7 @@ Versione documento: 1.3.0 — 2026-10-06 13:45
 | Online | `https://chicco83.github.io/mesh2step/` (GitHub Pages: *Settings → Pages → main / root*) |
 | Installata (PWA) | Dalla pagina online: menu del browser → *Installa app* / *Aggiungi a schermata Home*. Funziona offline e apre i file `.stl/.obj/.3mf` dal sistema |
 | Portabile (un file) | `dist/mesh2step_v1.3.0_20261006-1342.html`: doppio clic, funziona offline |
-| Windows (exe) | `Mesh2STEP_v1.3.0_<data>.exe` dalla GitHub Action *desktop* (o `desktop/build-desktop.sh`). Richiede WebView2 Runtime (già presente in Windows 10/11). Si può trascinare un file sull'exe o usare *Apri con* |
+| Windows (exe) | `Mesh2STEP_v1.3.0_<data>.exe` dalla GitHub Action *desktop* (o `desktop\build-desktop.ps1` / `desktop/build-desktop.sh`). Richiede WebView2 Runtime (già presente in Windows 10/11). Si può trascinare un file sull'exe o usare *Apri con* |
 | Sviluppo | `python3 -m http.server` nella cartella del progetto → `http://localhost:8000` |
 
 ## 2. Flusso di lavoro
@@ -90,7 +90,7 @@ src/app.js       UI, viewer, i18n, integrazione
 index.html       pagina; sw.js + manifest.webmanifest + icons/ = PWA
 vendor/          three.js 0.169 (licenza MIT in LICENSE-three.txt)
 build.mjs        dist/mesh2step_v<VERSION>_<AAAAMMGG-HHMM>.html (offline)
-desktop/         app Windows WebView2 (C#/.NET 8) + build-desktop.sh
+desktop/         app Windows WebView2 (C#/.NET 8) + build-desktop.ps1 / build-desktop.sh
 tests/           make_samples.py · run_core.js · check_step.py · samples/
 archive/         versioni precedenti dei file riscritti
 .github/workflows ci.yml (test + build) · desktop.yml (exe Windows)
@@ -105,8 +105,12 @@ SNAP=1 node tests/run_core.js tests/samples /tmp/out   # stessa cosa con snap ai
 ```bash
 # serve .NET 8 SDK (anche su Linux/macOS)
 desktop/build-desktop.sh        # -> desktop/out/Mesh2STEP_v<ver>_<data>.exe
+# Windows: .\desktop\build-desktop.ps1
 ```
 Oppure GitHub → *Actions* → *desktop* → *Run workflow* (o push di un tag `v1.3.0`: l'exe va nella release).
+
+### Ripresa del lavoro (Claude Code)
+Istruzioni complete per una nuova sessione in `CLAUDE.md`: stato, ambiente, mappa del codice, test attesi, insidie, prossimi passi.
 
 ### Nuova versione
 1. `VERSION`, costanti `VERSION` in `src/core.js` e `src/app.js`, `CACHE` in `sw.js`, `<Version>` in `desktop/*.csproj`, intestazioni dei file toccati.
