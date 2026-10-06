@@ -1,5 +1,12 @@
 # CHANGELOG — Mesh2STEP
-Versione documento: 1.3.0 — 2026-10-06 14:10
+Versione documento: 1.3.1 — 2026-10-06 20:32
+
+## 7. [1.3.1] — 2026-10-06 20:32 — Viewer: colori, selezione, navigazione
+- Colori delle facce **solo per tipo** (come in legenda): tolta la variazione casuale per regione.
+- Colore di selezione bianco (tema scuro) / quasi nero (chiaro): non si confonde più con toro/giallo/scala deviazione.
+- Dopo un'unione/modifica la faccia risultante **non resta più selezionata**.
+- Suggerimento di navigazione sul viewer (ruota/sposta/zoom/seleziona) e mappatura esplicita dei pulsanti del mouse.
+- Rollback: `git revert` del commit di questa versione.
 
 ## 6. [1.3.0 · documentazione] — 2026-10-06 14:10 — Ripresa del lavoro da Claude Code
 Codice dell'app invariato (resta 1.3.0, commit `61c8f81`).

@@ -27,13 +27,13 @@
   /* ===== Token colore: tema scuro (default) ===== */
   :root {
     --bg: #101214; --panel: #16191c; --line: #262a2f; --field: #1d2125; --fg: #e3e6e8; --dim: #8a929a;
-    --accent: #3fd0b6; --accent-ink: #062b25; --warn: #f0b23c; --err: #ef5b5b; --sel: #ffd84a;
+    --accent: #3fd0b6; --accent-ink: #062b25; --warn: #f0b23c; --err: #ef5b5b; --sel: #ffffff;
     --view-bg: #101214;
   }
   /* ===== Tema chiaro ===== */
   :root[data-theme="light"] {
     --bg: #f4f5f6; --panel: #ffffff; --line: #dde1e5; --field: #f1f3f5; --fg: #1d2125; --dim: #5f6872;
-    --accent: #0f8f7a; --accent-ink: #ffffff; --warn: #a86a00; --err: #c73535; --sel: #d49b00;
+    --accent: #0f8f7a; --accent-ink: #ffffff; --warn: #a86a00; --err: #c73535; --sel: #0a0a0a;
     --view-bg: #e9ecef;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -92,6 +92,7 @@
   #toolbar { left: 12px; top: 12px; display: flex; gap: 4px; flex-wrap: wrap; padding: 4px; max-width: calc(100% - 60px); }
   #toolbar button { min-height: 30px; padding: 4px 9px; font-size: 12px; border-color: var(--line); color: var(--fg); }
   #toolbar button.on { border-color: var(--accent); color: var(--accent); }
+  #navhint { left: 12px; top: 56px; font-size: 11px; color: var(--dim); padding: 4px 8px; pointer-events: none; }
   #devlegend { right: 12px; bottom: 12px; font-size: 11px; }
   #devlegend .bar { width: 160px; height: 10px; border-radius: 3px; background: linear-gradient(90deg, #2bb673, #f0d23c, #ef5b5b); margin: 4px 0 2px; }
   #busy { position: absolute; top: 14px; right: 14px; display: none; }
@@ -216,6 +217,7 @@
     <button id="t_edges" class="on" data-i18n="v_edges">Contorni</button>
     <button id="t_dev" data-i18n="v_dev">Deviazione</button>
   </div>
+  <div id="navhint" class="overlay" data-i18n="nav_hint">Trascina: ruota · Tasto destro (o Ctrl+trascina): sposta · Rotella: zoom · Clic: seleziona · F: adatta</div>
   <div id="pick" class="overlay" hidden></div>
   <div id="devlegend" class="overlay" hidden><span data-i18n="dev_title">Deviazione mesh ↔ superficie</span><div class="bar"></div><div class="row"><span>0</span><span id="devmax"></span></div></div>
   <div id="busy"></div>

@@ -5,7 +5,7 @@
   Versione precedente archiviata: archive/index_v1.0.1_20261006-1310.html
   (2026-10-06: nuova UI con editing facce, corpi, report, export STL/OBJ, deviazione, viste, IT/EN,
    tema chiaro, PWA offline con three.js locale in vendor/).
-  Build portabile single-file 20261006-1342: completamente offline (three.js incorporato).
+  Build portabile single-file 20261006-2232: completamente offline (three.js incorporato).
 -->
 <html lang="it">
 <head>
@@ -15,18 +15,20 @@
 <title>Mesh2STEP</title>
 <meta name="description" content="Converte mesh STL/OBJ/3MF in solidi CAD STEP con piani, cilindri, coni, sfere, tori e B-spline reali. Tutto nel browser, nessun upload.">
 <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAYAAABS3GwHAAAFjUlEQVR4nO3dTW5URxiF4TLKGCFkIWUPkWANSGwD74AVMGQF2UHYQJAYWmLIiIGRPGdoyUM2AJOUfNPuvn1/qur7Oe+zgVzj8/rrSyC5ePb88lcBRD2xfgDAEgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgFAGgEYu7q9tn4EaRf8L5JsHBv+P3+9MXgSbVwAA6d+6nMNxuMCDLRm4FyDMQhggD0/2QmhLwLoqOVHGkLog3eATlp/nuf9oA8uQGMjhso1aIcAGrH4CU0I+xHATh4+mhDCdrwD7OBh/KX4eY6IuAAbeB4c12AdAljB8/APEcIyBLBApOEfIoR5vAOcEXn8pcR//t64ACdkHA7X4DECOJBx+IcI4QEB/Edh+IcIgXeAUorm+EvR/bqnpC8AA3igeg0kA2D4p6mFIBUAw19OJQSZADyMf82ooj1vVOkDsBxSywFl+Tq8SRtA1sFk/bqspAtAZSAqX2dvqQKwGoXlIBS/5pZSBKD+01D969/jD+sH2MPD75Soq9+DqCGEvABehu/pm86vyTbh/iwQ3+jjvDyPl+/PUmE+AkX7hVUW6WOR+wvw8stHxh/U1e11efrhnfVjzApxAW7u70oppbx68afxk2Cpfz99tn6ERdxfgKkaAnyLMv5SglyAKS/X4Or22tVnXA8fEyMNvwoXQOUhBC8RWI8/4vCrsAFUHkJQFXn4Vah3gDlW7wfWP32t/vkZxl9KggswZXUNLH7fm+G3kSqAKnMIDL+tlAFUmUJg+H2kDqC6ub8zeUk+HG20vxOcffyliARQio/fLfIw6iUUhl/JBFB5CMErpeFXcgFUhPBAcfhVmn8PsJX6ny9SHn8pwhdgSvEaqA+/IoAJhRAY/v8RwBEZQ2D4x8m/A8zJ8n7A+E/jApwR+Row/PMIYKFIITD85QhgJc8hMPz1eAfYyNv7AePfhguwg4drwPD3IYAGLEJg+G0QQEMjQmD4bfEO0EGv9wPG3x4XoJOW14Dh90MAne0JgeH3RwCDrAmB4Y/DO8Bg594PGP9YXAADx64Bw7dBAIZu7u/Kj6/frB9DGh+BII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AII0AIO3i2fPLX9YPscTLLx+tH6GLzP959J/v/7Z+hLPCBFBlCyFjABGGX4X7CPT99VvrR8CMSOMvJeAFmMpwDbJcgGjDr0IHUEUOIXoAUYdfpQigihhC1ACiD78K9w4wh/eDMbKMv5RkF2AqyjWIdAEyDb9KG0DlPYQIAWQcfpU+gMprCJ4DyDz8KtU7wBzeD9ZRGH8pQhdgytM18HYBVIZfSQZQeQjBSwBqw6+kA6gsQ7AOQHX4lcw7wBzV9wP18ZfCBXhk9DWwuAAM/wEBnDAqhJEBMPzHCOCM3iGMCIDhn8Y7wBnR3w8Y/zwuwAo9rkGvC8DwlyGADVqG0DoAhr8OAezQIoRWATD8bXgH2MHL+wHj344L0MjWa7DnAjD8/QigsbUhbAmA4bdDAJ0sDWFNAAy/Pd4BOmn9fsD4++ACDDB3Dc5dAIbfFwEMdCyEUwEw/DEIwMA0hMMAGP5YvAMYOPV+wPjH4wIYe/rhHcM3RACQxkcgSCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASCMASPsNHuct18Ad98YAAAAASUVORK5CYII=">
+<link rel="manifest" href="manifest.webmanifest">
 <!-- three.js locale (offline): vendor/ -->
+
 <style>
   /* ===== Token colore: tema scuro (default) ===== */
   :root {
     --bg: #101214; --panel: #16191c; --line: #262a2f; --field: #1d2125; --fg: #e3e6e8; --dim: #8a929a;
-    --accent: #3fd0b6; --accent-ink: #062b25; --warn: #f0b23c; --err: #ef5b5b; --sel: #ffd84a;
+    --accent: #3fd0b6; --accent-ink: #062b25; --warn: #f0b23c; --err: #ef5b5b; --sel: #ffffff;
     --view-bg: #101214;
   }
   /* ===== Tema chiaro ===== */
   :root[data-theme="light"] {
     --bg: #f4f5f6; --panel: #ffffff; --line: #dde1e5; --field: #f1f3f5; --fg: #1d2125; --dim: #5f6872;
-    --accent: #0f8f7a; --accent-ink: #ffffff; --warn: #a86a00; --err: #c73535; --sel: #d49b00;
+    --accent: #0f8f7a; --accent-ink: #ffffff; --warn: #a86a00; --err: #c73535; --sel: #0a0a0a;
     --view-bg: #e9ecef;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -85,6 +87,7 @@
   #toolbar { left: 12px; top: 12px; display: flex; gap: 4px; flex-wrap: wrap; padding: 4px; max-width: calc(100% - 60px); }
   #toolbar button { min-height: 30px; padding: 4px 9px; font-size: 12px; border-color: var(--line); color: var(--fg); }
   #toolbar button.on { border-color: var(--accent); color: var(--accent); }
+  #navhint { left: 12px; top: 56px; font-size: 11px; color: var(--dim); padding: 4px 8px; pointer-events: none; }
   #devlegend { right: 12px; bottom: 12px; font-size: 11px; }
   #devlegend .bar { width: 160px; height: 10px; border-radius: 3px; background: linear-gradient(90deg, #2bb673, #f0d23c, #ef5b5b); margin: 4px 0 2px; }
   #busy { position: absolute; top: 14px; right: 14px; display: none; }
@@ -209,6 +212,7 @@
     <button id="t_edges" class="on" data-i18n="v_edges">Contorni</button>
     <button id="t_dev" data-i18n="v_dev">Deviazione</button>
   </div>
+  <div id="navhint" class="overlay" data-i18n="nav_hint">Trascina: ruota · Tasto destro (o Ctrl+trascina): sposta · Rotella: zoom · Clic: seleziona · F: adatta</div>
   <div id="pick" class="overlay" hidden></div>
   <div id="devlegend" class="overlay" hidden><span data-i18n="dev_title">Deviazione mesh ↔ superficie</span><div class="bar"></div><div class="row"><span>0</span><span id="devmax"></span></div></div>
   <div id="busy"></div>
@@ -216,7 +220,7 @@
 
 <script id="worker-src" type="text/plain">/*
  * Mesh2STEP — core.js
- * Versione: 1.3.0 — 2026-10-06 13:40 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
+ * Versione: 1.3.1 — 2026-10-06 20:32 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
  * ---------------------------------------------------------------------------
  * Motore indipendente dalla UI (gira nel Web Worker del browser e in Node per i test).
  *   1. Parsing  : STL (binario/ASCII), OBJ, 3MF (zip letto a mano + DecompressionStream)
@@ -228,7 +232,7 @@
  */
 (function (root) {
   'use strict';
-  const VERSION = '1.3.0';
+  const VERSION = '1.3.1';
 
   // ===================== Helper vettoriali (array [x,y,z]) =====================
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -3452,7 +3456,7 @@ export { OrbitControls };
 </script>
 <script id="app-src" type="text/plain">/*
  * Mesh2STEP — app.js
- * Versione: 1.3.0 — 2026-10-06 13:40 (Europe/Rome)
+ * Versione: 1.3.1 — 2026-10-06 20:32 (Europe/Rome)
  * Versione precedente archiviata: archive/app_v1.0.1_20261006-1310.js
  * (2026-10-06: riscritta per editing facce, corpi, report CSV, export STL/OBJ, heatmap deviazione,
  *  viste, IT/EN, tema chiaro, condivisione, PWA e API di integrazione).
@@ -3462,7 +3466,7 @@ export { OrbitControls };
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const VERSION = '1.3.0';
+const VERSION = '1.3.1';
 const $ = id => document.getElementById(id);
 const store = { get: k => { try { return localStorage.getItem('m2s.' + k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem('m2s.' + k, v); } catch { /* storage non disponibile */ } } };
 
@@ -3476,7 +3480,7 @@ const DICT = {
     multi: 'Selezione multipla', clearsel: 'Deseleziona', as_auto: 'Automatico (unisci)', apply: 'Applica', maxerr: 'Scarto max accettato (mm)', undo: 'Annulla ultima modifica',
     s_bodies: 'Corpi', s_export: 'Export', step: 'Scarica STEP', obj: 'OBJ (gruppi)', share: 'Condividi STEP',
     privacy: "I file restano sul tuo dispositivo: l'elaborazione avviene nel browser.", nav: 'Ruota: trascina · Zoom: rotella/pizzica · Sposta: tasto destro o Shift · Adatta: F',
-    drop: 'Trascina qui un file STL, OBJ o 3MF oppure usa «Apri mesh»', v_top: 'Alto', v_front: 'Fronte', v_right: 'Destra', v_edges: 'Contorni', v_dev: 'Deviazione', dev_title: 'Deviazione mesh ↔ superficie',
+    nav_hint: 'Trascina: ruota · Tasto destro (o Ctrl+trascina): sposta · Rotella: zoom · Clic: seleziona · F: adatta', drop: 'Trascina qui un file STL, OBJ o 3MF oppure usa «Apri mesh»', v_top: 'Alto', v_front: 'Fronte', v_right: 'Destra', v_edges: 'Contorni', v_dev: 'Deviazione', dev_title: 'Deviazione mesh ↔ superficie',
     t_plane: 'Piano', t_cylinder: 'Cilindro', t_cone: 'Cono', t_sphere: 'Sfera', t_torus: 'Toro', t_thread: 'Filettatura', t_bspline: 'B-spline', t_freeform: 'Freeform',
     t_plane_p: 'Piani', t_cylinder_p: 'Cilindri', t_cone_p: 'Coni', t_sphere_p: 'Sfere', t_torus_p: 'Tori', t_thread_p: 'Filettature', t_bspline_p: 'B-spline', t_freeform_p: 'Freeform (triangoli)',
     f_name: 'File', f_tris: 'Triangoli', f_bodies: 'Corpi', f_size: 'Dimensioni', f_closed: 'Chiusa', f_volume: 'Volume', yes: 'sì', no_open: 'no ({o} bordi aperti, {n} non-manifold)',
@@ -3501,7 +3505,7 @@ const DICT = {
     multi: 'Multi-select', clearsel: 'Clear selection', as_auto: 'Automatic (merge)', apply: 'Apply', maxerr: 'Max accepted deviation (mm)', undo: 'Undo last edit',
     s_bodies: 'Bodies', s_export: 'Export', step: 'Download STEP', obj: 'OBJ (groups)', share: 'Share STEP',
     privacy: 'Your files stay on your device: processing happens in the browser.', nav: 'Rotate: drag · Zoom: wheel/pinch · Pan: right button or Shift · Fit: F',
-    drop: 'Drop an STL, OBJ or 3MF file here or use "Open mesh"', v_top: 'Top', v_front: 'Front', v_right: 'Right', v_edges: 'Edges', v_dev: 'Deviation', dev_title: 'Mesh ↔ surface deviation',
+    nav_hint: 'Drag: rotate · Right button (or Ctrl+drag): pan · Wheel: zoom · Click: select · F: fit', drop: 'Drop an STL, OBJ or 3MF file here or use "Open mesh"', v_top: 'Top', v_front: 'Front', v_right: 'Right', v_edges: 'Edges', v_dev: 'Deviation', dev_title: 'Mesh ↔ surface deviation',
     t_plane: 'Plane', t_cylinder: 'Cylinder', t_cone: 'Cone', t_sphere: 'Sphere', t_torus: 'Torus', t_thread: 'Thread', t_bspline: 'B-spline', t_freeform: 'Freeform',
     t_plane_p: 'Planes', t_cylinder_p: 'Cylinders', t_cone_p: 'Cones', t_sphere_p: 'Spheres', t_torus_p: 'Tori', t_thread_p: 'Threads', t_bspline_p: 'B-splines', t_freeform_p: 'Freeform (triangles)',
     f_name: 'File', f_tris: 'Triangles', f_bodies: 'Bodies', f_size: 'Size', f_closed: 'Closed', f_volume: 'Volume', yes: 'yes', no_open: 'no ({o} open edges, {n} non-manifold)',
@@ -3558,6 +3562,7 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 1e6);
 const controls = new OrbitControls(camera, canvas); controls.enableDamping = true;
+controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };   // trascina = ruota, destro = sposta, rotella = zoom
 scene.add(new THREE.HemisphereLight(0xffffff, 0x30343a, 1.6));
 const sun = new THREE.DirectionalLight(0xffffff, 1.4); camera.add(sun); sun.position.set(1, 2, 3); scene.add(camera);
 let meshObj = null, edgeObj = null;
@@ -3596,11 +3601,9 @@ $('t_dev').onclick = () => { showDev = !showDev; $('t_dev').classList.toggle('on
 
 // colori per tipo, con variazione per regione (facce adiacenti distinguibili)
 const BASE = { plane: '#7d93b8', cylinder: '#3fd0b6', cone: '#5fb0f0', sphere: '#f39a4a', torus: '#e3c84a', thread: '#ff6f91', bspline: '#9ad35a', freeform: '#c46bd6', none: '#9aa1a8' };
-function regionColor(r) {
-  const c = new THREE.Color(BASE[r.type] || BASE.none), hsl = {}; c.getHSL(hsl);
-  const k = ((r.id * 0.618034) % 1) - 0.5;
-  return new THREE.Color().setHSL(hsl.h + (r.type === 'freeform' ? 0 : k * 0.06), hsl.s, THREE.MathUtils.clamp(hsl.l + k * 0.18, 0.25, 0.8));
-}
+// [2026-10-06 v1.3.1] prima: variazione di tinta/luminosità per regione (sembrava casuale). Ora il colore dipende SOLO dal tipo
+// (come in legenda); i confini tra facce adiacenti sono resi dai contorni.
+function regionColor(r) { return new THREE.Color(BASE[r.type] || BASE.none); }
 // scala deviazione: verde (0) -> giallo (tol/2) -> rosso (≥ tol)
 const C0 = new THREE.Color('#2bb673'), C1 = new THREE.Color('#f0d23c'), C2 = new THREE.Color('#ef5b5b');
 const devColor = x => { const s = Math.min(1, Math.max(0, x)); return s < 0.5 ? C0.clone().lerp(C1, s * 2) : C1.clone().lerp(C2, (s - 0.5) * 2); };
@@ -3731,8 +3734,7 @@ function opts() {
   return { tol: +$('tol').value, angle: +$('ang').value, cylinders: $('o_cyl').checked, cones: $('o_cone').checked, spheres: $('o_sph').checked, tori: $('o_tor').checked, threads: $('o_thr').checked, nurbs: $('o_nurbs').checked, snap: $('o_snap').checked };
 }
 function onResult(r) {
-  res = r; sel.clear();
-  if (r.selected != null) sel.add(r.selected);
+  res = r; sel.clear();   // [2026-10-06 v1.3.1] prima: la faccia risultante da un'unione restava selezionata (sel.add(r.selected))
   showEdgesObj(r.edges); showResults(); updateSel();
   $('results').hidden = false; $('editsec').hidden = false; $('step').disabled = false;
   try { $('share').hidden = !(navigator.canShare && navigator.canShare({ files: [new File(['x'], 'x.step')] })); } catch { $('share').hidden = true; }

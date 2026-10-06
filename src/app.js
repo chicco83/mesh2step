@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — app.js
- * Versione: 1.3.0 — 2026-10-06 13:40 (Europe/Rome)
+ * Versione: 1.3.1 — 2026-10-06 20:32 (Europe/Rome)
  * Versione precedente archiviata: archive/app_v1.0.1_20261006-1310.js
  * (2026-10-06: riscritta per editing facce, corpi, report CSV, export STL/OBJ, heatmap deviazione,
  *  viste, IT/EN, tema chiaro, condivisione, PWA e API di integrazione).
@@ -10,7 +10,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const VERSION = '1.3.0';
+const VERSION = '1.3.1';
 const $ = id => document.getElementById(id);
 const store = { get: k => { try { return localStorage.getItem('m2s.' + k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem('m2s.' + k, v); } catch { /* storage non disponibile */ } } };
 
@@ -24,7 +24,7 @@ const DICT = {
     multi: 'Selezione multipla', clearsel: 'Deseleziona', as_auto: 'Automatico (unisci)', apply: 'Applica', maxerr: 'Scarto max accettato (mm)', undo: 'Annulla ultima modifica',
     s_bodies: 'Corpi', s_export: 'Export', step: 'Scarica STEP', obj: 'OBJ (gruppi)', share: 'Condividi STEP',
     privacy: "I file restano sul tuo dispositivo: l'elaborazione avviene nel browser.", nav: 'Ruota: trascina · Zoom: rotella/pizzica · Sposta: tasto destro o Shift · Adatta: F',
-    drop: 'Trascina qui un file STL, OBJ o 3MF oppure usa «Apri mesh»', v_top: 'Alto', v_front: 'Fronte', v_right: 'Destra', v_edges: 'Contorni', v_dev: 'Deviazione', dev_title: 'Deviazione mesh ↔ superficie',
+    nav_hint: 'Trascina: ruota · Tasto destro (o Ctrl+trascina): sposta · Rotella: zoom · Clic: seleziona · F: adatta', drop: 'Trascina qui un file STL, OBJ o 3MF oppure usa «Apri mesh»', v_top: 'Alto', v_front: 'Fronte', v_right: 'Destra', v_edges: 'Contorni', v_dev: 'Deviazione', dev_title: 'Deviazione mesh ↔ superficie',
     t_plane: 'Piano', t_cylinder: 'Cilindro', t_cone: 'Cono', t_sphere: 'Sfera', t_torus: 'Toro', t_thread: 'Filettatura', t_bspline: 'B-spline', t_freeform: 'Freeform',
     t_plane_p: 'Piani', t_cylinder_p: 'Cilindri', t_cone_p: 'Coni', t_sphere_p: 'Sfere', t_torus_p: 'Tori', t_thread_p: 'Filettature', t_bspline_p: 'B-spline', t_freeform_p: 'Freeform (triangoli)',
     f_name: 'File', f_tris: 'Triangoli', f_bodies: 'Corpi', f_size: 'Dimensioni', f_closed: 'Chiusa', f_volume: 'Volume', yes: 'sì', no_open: 'no ({o} bordi aperti, {n} non-manifold)',
@@ -49,7 +49,7 @@ const DICT = {
     multi: 'Multi-select', clearsel: 'Clear selection', as_auto: 'Automatic (merge)', apply: 'Apply', maxerr: 'Max accepted deviation (mm)', undo: 'Undo last edit',
     s_bodies: 'Bodies', s_export: 'Export', step: 'Download STEP', obj: 'OBJ (groups)', share: 'Share STEP',
     privacy: 'Your files stay on your device: processing happens in the browser.', nav: 'Rotate: drag · Zoom: wheel/pinch · Pan: right button or Shift · Fit: F',
-    drop: 'Drop an STL, OBJ or 3MF file here or use "Open mesh"', v_top: 'Top', v_front: 'Front', v_right: 'Right', v_edges: 'Edges', v_dev: 'Deviation', dev_title: 'Mesh ↔ surface deviation',
+    nav_hint: 'Drag: rotate · Right button (or Ctrl+drag): pan · Wheel: zoom · Click: select · F: fit', drop: 'Drop an STL, OBJ or 3MF file here or use "Open mesh"', v_top: 'Top', v_front: 'Front', v_right: 'Right', v_edges: 'Edges', v_dev: 'Deviation', dev_title: 'Mesh ↔ surface deviation',
     t_plane: 'Plane', t_cylinder: 'Cylinder', t_cone: 'Cone', t_sphere: 'Sphere', t_torus: 'Torus', t_thread: 'Thread', t_bspline: 'B-spline', t_freeform: 'Freeform',
     t_plane_p: 'Planes', t_cylinder_p: 'Cylinders', t_cone_p: 'Cones', t_sphere_p: 'Spheres', t_torus_p: 'Tori', t_thread_p: 'Threads', t_bspline_p: 'B-splines', t_freeform_p: 'Freeform (triangles)',
     f_name: 'File', f_tris: 'Triangles', f_bodies: 'Bodies', f_size: 'Size', f_closed: 'Closed', f_volume: 'Volume', yes: 'yes', no_open: 'no ({o} open edges, {n} non-manifold)',
@@ -106,6 +106,7 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 1e6);
 const controls = new OrbitControls(camera, canvas); controls.enableDamping = true;
+controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };   // trascina = ruota, destro = sposta, rotella = zoom
 scene.add(new THREE.HemisphereLight(0xffffff, 0x30343a, 1.6));
 const sun = new THREE.DirectionalLight(0xffffff, 1.4); camera.add(sun); sun.position.set(1, 2, 3); scene.add(camera);
 let meshObj = null, edgeObj = null;
@@ -144,11 +145,9 @@ $('t_dev').onclick = () => { showDev = !showDev; $('t_dev').classList.toggle('on
 
 // colori per tipo, con variazione per regione (facce adiacenti distinguibili)
 const BASE = { plane: '#7d93b8', cylinder: '#3fd0b6', cone: '#5fb0f0', sphere: '#f39a4a', torus: '#e3c84a', thread: '#ff6f91', bspline: '#9ad35a', freeform: '#c46bd6', none: '#9aa1a8' };
-function regionColor(r) {
-  const c = new THREE.Color(BASE[r.type] || BASE.none), hsl = {}; c.getHSL(hsl);
-  const k = ((r.id * 0.618034) % 1) - 0.5;
-  return new THREE.Color().setHSL(hsl.h + (r.type === 'freeform' ? 0 : k * 0.06), hsl.s, THREE.MathUtils.clamp(hsl.l + k * 0.18, 0.25, 0.8));
-}
+// [2026-10-06 v1.3.1] prima: variazione di tinta/luminosità per regione (sembrava casuale). Ora il colore dipende SOLO dal tipo
+// (come in legenda); i confini tra facce adiacenti sono resi dai contorni.
+function regionColor(r) { return new THREE.Color(BASE[r.type] || BASE.none); }
 // scala deviazione: verde (0) -> giallo (tol/2) -> rosso (≥ tol)
 const C0 = new THREE.Color('#2bb673'), C1 = new THREE.Color('#f0d23c'), C2 = new THREE.Color('#ef5b5b');
 const devColor = x => { const s = Math.min(1, Math.max(0, x)); return s < 0.5 ? C0.clone().lerp(C1, s * 2) : C1.clone().lerp(C2, (s - 0.5) * 2); };
@@ -279,8 +278,7 @@ function opts() {
   return { tol: +$('tol').value, angle: +$('ang').value, cylinders: $('o_cyl').checked, cones: $('o_cone').checked, spheres: $('o_sph').checked, tori: $('o_tor').checked, threads: $('o_thr').checked, nurbs: $('o_nurbs').checked, snap: $('o_snap').checked };
 }
 function onResult(r) {
-  res = r; sel.clear();
-  if (r.selected != null) sel.add(r.selected);
+  res = r; sel.clear();   // [2026-10-06 v1.3.1] prima: la faccia risultante da un'unione restava selezionata (sel.add(r.selected))
   showEdgesObj(r.edges); showResults(); updateSel();
   $('results').hidden = false; $('editsec').hidden = false; $('step').disabled = false;
   try { $('share').hidden = !(navigator.canShare && navigator.canShare({ files: [new File(['x'], 'x.step')] })); } catch { $('share').hidden = true; }
