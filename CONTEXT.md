@@ -1,5 +1,5 @@
 # CONTEXT — Mesh2STEP
-Versione documento: 1.4.1 — 2026-10-07 00:43
+Versione documento: 1.5.0 — 2026-10-07 01:03
 
 ## Scopo
 Web app che converte mesh triangolari (STL, OBJ, 3MF) in file STEP con **geometria CAD reale**:
@@ -63,16 +63,17 @@ index.html ── src/app.js (UI, viewer three.js, i18n, editing, export, API in
 - Filettature: di default esportate sfaccettate (geometria fedele) con nome faccia `THREAD Mx`. [2026-10-07, v1.4.0] Opzione *cilindro nominale*:
   i vertici del filetto si proiettano **radialmente** su una copia della mesh (i piani ⟂ asse restano piani; le altre regioni toccate
   diventano sfaccettate). Spenta di default perché cambia volume e geometria.
+- [2026-10-07, v1.5.0] B-spline chiusa: rete periodica in angolo convertita in bloccata (Boehm) perché OpenCASCADE legge un dominio sbagliato con nodi uniformi non bloccati; prima/ultima riga di controllo coincidenti, nessun spigolo di cucitura esplicito (OCC lo ricostruisce: `valid=True`).
 - Regioni chiuse senza bordo: prima sfaccettate (`ADVANCED_FACE` richiede un anello). [2026-10-07, v1.4.0] sfera e toro si dividono con un piano
   per centro/asse in due facce analitiche (emisferi / semi-tubi); altri tipi chiusi restano sfaccettati.
-- **Non** fatto, di proposito: ricostruzione di auto-intersezioni (richiede booleane robuste); filettatura che sostituisce il cilindro
+- **Non** fatto, di proposito: riparazione delle auto-intersezioni (richiede booleane robuste; dalla 1.5.0 si **rilevano** e si segnalano); filettatura che sostituisce il cilindro
   nello STEP senza opzione (cambierebbe il volume senza che l'utente lo scelga).
 - Editing manuale: le regioni unite devono essere contigue (una faccia = una zona connessa).
 - App Windows con WebView2 (stessa scelta di 3D STL Multipart Maker), file web come risorse incorporate. [2026-10-07] I nomi delle risorse si normalizzano (`\` → `/`): `%(RecursiveDir)` dà backslash sui build Windows.
 
 ## Limiti noti v1.4.0
-- B-spline solo per zone "campo di altezze"; deviazione di freeform e filettature = 0 (nessuna superficie di riferimento).
-- Riparazione: buchi e non-manifold; non le auto-intersezioni.
+- B-spline per zone "campo di altezze" e (1.5.0) superfici chiuse a stella; deviazione di freeform e filettature = 0 (nessuna superficie di riferimento).
+- Riparazione: buchi e non-manifold; auto-intersezioni solo rilevate (1.5.0).
 - Report PDF su una sola pagina.
 - Exe Windows provato (v1.4.1) ma non «Apri con…»/trascinamento né un PC senza WebView2.
 
@@ -86,6 +87,6 @@ index.html ── src/app.js (UI, viewer three.js, i18n, editing, export, API in
 
 ## Problemi aperti
 - App Windows: da provare «Apri con…»/trascinamento sull'exe e l'avvio su un PC senza runtime WebView2.
-- Pulsante «Converti in STEP» da aggiungere nel repo 3D STL Multipart Maker.
-- Auto-intersezioni non riparate.
-- B-spline per superfici che si richiudono; deviazione per freeform/filettature.
+- Pulsante «Converti in STEP»: fatto nel repo 3D STL Multipart Maker v0.6.2-beta (2026-10-07), non provato dalla versione Windows di quel programma.
+- Auto-intersezioni non riparate (solo rilevate).
+- B-spline chiuse solo per superfici «a stella» rispetto a un asse; deviazione per freeform/filettature mancante.

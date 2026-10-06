@@ -1,5 +1,5 @@
 # MANUALE — Mesh2STEP
-Versione documento: 1.4.0 — 2026-10-07 00:23
+Versione documento: 1.5.0 — 2026-10-07 01:03
 <!-- [2026-10-06 13:45] versione precedente 1.0.0 (2026-10-05 17:10) nel repository git (commit 729f9ed). -->
 
 ## 1. Avvio
@@ -37,7 +37,7 @@ Versione documento: 1.4.0 — 2026-10-07 00:23
 | Arancio | Sfera | `SPHERICAL_SURFACE` |
 | Giallo | Toro | `TOROIDAL_SURFACE` (completo: 2 facce) |
 | Rosa | Filettatura | triangoli piani, facce `THREAD M…` |
-| Verde chiaro | B-spline | `B_SPLINE_SURFACE_WITH_KNOTS` |
+| Verde chiaro | B-spline (anche chiusa in angolo, es. vasi/tubi lisci) | `B_SPLINE_SURFACE_WITH_KNOTS` |
 | Viola | Freeform | triangoli piani |
 | Bianco (tema scuro) / blu (tema chiaro) | Selezione | — |
 
@@ -72,6 +72,8 @@ dall'angolo in basso a sinistra della vista, asse), filettature e alberi. Fori c
 nominale ISO; interno: fondo del foro) con nome faccia `THREAD Mx`. Il volume cambia rispetto alla mesh filettata.
 
 **Ripara**: compare con buchi o spigoli non-manifold; rimuove duplicati/alette, poi chiude i buchi.
+
+**Auto-intersezioni**: se la mesh si taglia da sola compare la riga *Auto-intersezioni* (coppie di triangoli) e un avviso: volume e riconoscimento possono essere inaffidabili. Non vengono riparate: correggi il modello nel programma d'origine (unione booleana). Il controllo ha un limite di 4 s sulle mesh molto grandi (il numero è allora seguito da «+»).
 
 ## 8. Navigazione e interfaccia
 Trascina = ruota · rotella/pizzica = zoom · tasto destro o Shift+trascina = sposta · **F** = adatta.

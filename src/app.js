@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — app.js
- * Versione: 1.4.1 — 2026-10-07 00:40 (Europe/Rome)
+ * Versione: 1.5.0 — 2026-10-07 01:03 (Europe/Rome)
  * Versione precedente archiviata: archive/app_v1.0.1_20261006-1310.js
  * (2026-10-06: riscritta per editing facce, corpi, report CSV, export STL/OBJ, heatmap deviazione,
  *  viste, IT/EN, tema chiaro, condivisione, PWA e API di integrazione).
@@ -10,7 +10,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const VERSION = '1.4.1';
+// [2026-10-07 v1.5.0] const VERSION = '1.4.1';
+const VERSION = '1.5.0';
 const $ = id => document.getElementById(id);
 const store = { get: k => { try { return localStorage.getItem('m2s.' + k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem('m2s.' + k, v); } catch { /* storage non disponibile */ } } };
 
@@ -27,7 +28,7 @@ const DICT = {
     nav_hint: 'Trascina: ruota · Tasto destro (o Ctrl+trascina): sposta · Rotella: zoom · Clic: seleziona · F: adatta', drop: 'Trascina qui un file STL, OBJ o 3MF oppure usa «Apri mesh»', v_top: 'Alto', v_front: 'Fronte', v_right: 'Destra', v_edges: 'Contorni', v_dev: 'Deviazione', dev_title: 'Deviazione mesh ↔ superficie',
     t_plane: 'Piano', t_cylinder: 'Cilindro', t_cone: 'Cono', t_sphere: 'Sfera', t_torus: 'Toro', t_thread: 'Filettatura', t_bspline: 'B-spline', t_freeform: 'Freeform',
     t_plane_p: 'Piani', t_cylinder_p: 'Cilindri', t_cone_p: 'Coni', t_sphere_p: 'Sfere', t_torus_p: 'Tori', t_thread_p: 'Filettature', t_bspline_p: 'B-spline', t_freeform_p: 'Freeform (triangoli)',
-    f_name: 'File', f_tris: 'Triangoli', f_bodies: 'Corpi', f_size: 'Dimensioni', f_closed: 'Chiusa', f_volume: 'Volume', yes: 'sì', no_open: 'no ({o} bordi aperti, {n} non-manifold)',
+    f_name: 'File', f_tris: 'Triangoli', f_bodies: 'Corpi', f_size: 'Dimensioni', f_closed: 'Chiusa', f_selfint: 'Auto-intersezioni', closed_u: '(chiusa)', selfint_n: '{n} coppie di triangoli{p}', selfint_warn: 'La mesh si auto-interseca ({n} coppie{p}): volume e riconoscimento possono essere inaffidabili. Correggi il modello nel programma d\'origine (unione booleana).', f_volume: 'Volume', yes: 'sì', no_open: 'no ({o} bordi aperti, {n} non-manifold)',
     reading: 'Lettura di {f}…', loaded: 'Mesh caricata.', open_warn: 'Mesh aperta: usa «Chiudi i buchi» oppure lo STEP sarà una superficie.', analysing: 'Riconoscimento superfici…',
     done: 'Analisi completata in {s} s.', many_free: ' Molte zone freeform: prova ad aumentare la tolleranza.', step_gen: 'Generazione STEP…',
     step_ok: 'STEP salvato: {f} facce ({c} spigoli circolari, {l} rettilinei), {s} solido/i.', step_surf: 'STEP salvato: {f} facce, superficie aperta.',
@@ -53,7 +54,7 @@ const DICT = {
     nav_hint: 'Drag: rotate · Right button (or Ctrl+drag): pan · Wheel: zoom · Click: select · F: fit', drop: 'Drop an STL, OBJ or 3MF file here or use "Open mesh"', v_top: 'Top', v_front: 'Front', v_right: 'Right', v_edges: 'Edges', v_dev: 'Deviation', dev_title: 'Mesh ↔ surface deviation',
     t_plane: 'Plane', t_cylinder: 'Cylinder', t_cone: 'Cone', t_sphere: 'Sphere', t_torus: 'Torus', t_thread: 'Thread', t_bspline: 'B-spline', t_freeform: 'Freeform',
     t_plane_p: 'Planes', t_cylinder_p: 'Cylinders', t_cone_p: 'Cones', t_sphere_p: 'Spheres', t_torus_p: 'Tori', t_thread_p: 'Threads', t_bspline_p: 'B-splines', t_freeform_p: 'Freeform (triangles)',
-    f_name: 'File', f_tris: 'Triangles', f_bodies: 'Bodies', f_size: 'Size', f_closed: 'Closed', f_volume: 'Volume', yes: 'yes', no_open: 'no ({o} open edges, {n} non-manifold)',
+    f_name: 'File', f_tris: 'Triangles', f_bodies: 'Bodies', f_size: 'Size', f_closed: 'Closed', f_selfint: 'Self-intersections', closed_u: '(closed)', selfint_n: '{n} triangle pairs{p}', selfint_warn: 'The mesh intersects itself ({n} pairs{p}): volume and recognition may be unreliable. Fix the model in the source program (boolean union).', f_volume: 'Volume', yes: 'yes', no_open: 'no ({o} open edges, {n} non-manifold)',
     reading: 'Reading {f}…', loaded: 'Mesh loaded.', open_warn: 'Open mesh: use "Close mesh holes" or the STEP will be a surface.', analysing: 'Recognising surfaces…',
     done: 'Analysis done in {s} s.', many_free: ' Many freeform areas: try a larger tolerance.', step_gen: 'Generating STEP…',
     step_ok: 'STEP saved: {f} faces ({c} circular, {l} straight edges), {s} solid(s).', step_surf: 'STEP saved: {f} faces, open surface.',
@@ -221,7 +222,7 @@ function showPick(r) {
   if (r.type === 'cone') rows.push([t('k_angle'), fmt(r.alpha * 180 / Math.PI, 2) + '° (' + fmt(r.alpha * 360 / Math.PI, 1) + '° incl.)'], [t('k_axis'), v3(r.axis)]);
   if (r.type === 'torus') rows.push([t('k_R'), fmt(r.R) + ' mm'], [t('k_r'), 'R ' + fmt(r.r) + ' mm'], [t('k_axis'), v3(r.axis)]);
   if (r.type === 'thread') rows.push([t('t_thread'), r.label + ' ' + t(r.internal ? 'internal' : 'external')], [t('k_pitch'), fmt(r.pitch, 2) + ' mm'], [t('k_hand'), t('hand_' + r.hand)], [t('k_major'), fmt(r.major, 2)], [t('k_minor'), fmt(r.minor, 2)], [t('k_len'), fmt(r.length, 2) + ' mm']);
-  if (r.type === 'bspline') rows.push([t('k_ctrl'), r.nc + ' × ' + r.nc]);
+  if (r.type === 'bspline') rows.push([t('k_ctrl'), r.nc + ' × ' + (r.nv || r.nc) + (r.closedU ? ' ' + t('closed_u') : '')]);   // [v1.5.0] prima: r.nc + ' × ' + r.nc
   if (r.type !== 'freeform' && r.type !== 'thread') rows.push([t('k_err'), fmt(r.err, 4) + ' mm']);
   $('pick').innerHTML = '<dl class="kv">' + rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('') + '</dl>';
   $('pick').hidden = false;
@@ -236,7 +237,7 @@ function showInfo() {
     [t('f_size'), size.map(v => fmt(v, 1)).join(' × ') + ' mm'],
     [t('f_closed'), closed ? t('yes') : t('no_open', { o: info.open, n: info.nonManifold })],
     [t('f_volume'), closed ? fmt(Math.abs(info.volume) / 1000, 2) + ' cm³' : '—'],
-  ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+  ].concat(info.selfInt ? [[t('f_selfint'), t('selfint_n', { n: info.selfInt, p: info.selfIntPartial ? '+' : '' })]] : []).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');   // [v1.5.0] riga auto-intersezioni
   $('meshinfo').hidden = false;
   $('repair').hidden = info.open === 0 && info.nonManifold === 0;   // [v1.4.0] prima: solo info.open === 0
 }
@@ -255,7 +256,8 @@ async function loadBuffer(name, buf) {
     const r = await call({ cmd: 'load', name, buf }, [buf]);
     onMesh(r);
     const closed = info.open === 0 && info.nonManifold === 0;
-    status(closed ? t('loaded') : t('open_warn'), closed ? '' : 'warn');
+    // [v1.5.0] prima: status(closed ? t('loaded') : t('open_warn'), closed ? '' : 'warn');
+    status(info.selfInt ? t('selfint_warn', { n: info.selfInt, p: info.selfIntPartial ? '+' : '' }) : closed ? t('loaded') : t('open_warn'), closed && !info.selfInt ? '' : 'warn');
     await analyse();
   } catch (e) { status(t('err') + errText(e), 'err'); }
   finally { busy(false); }

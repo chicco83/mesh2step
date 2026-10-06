@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — worker.js
- * Versione: 1.4.0 — 2026-10-07 00:23 (Europe/Rome)
+ * Versione: 1.5.0 — 2026-10-07 01:03 (Europe/Rome)
  * Versione precedente archiviata in archive/worker_v1.0.0_20261005-1710.js (2026-10-06: riscrittura
  * per editing, riparazione, export STL/OBJ, deviazione, corpi).
  *
@@ -32,7 +32,8 @@ function regionSummary(r) {
   if (r.type === 'cone') Object.assign(o, { alpha: r.alpha, axis: r.axis, apex: r.apex, hole: !r.outward });
   if (r.type === 'torus') Object.assign(o, { R: r.R, r: r.r, axis: r.axis, center: r.center, hole: !r.outward });
   if (r.type === 'thread') Object.assign(o, { label: r.label, pitch: r.pitch, hand: r.hand, major: 2 * r.rmax, minor: 2 * r.rmin, length: r.length, axis: r.axis, origin: r.origin, internal: r.internal });
-  if (r.type === 'bspline') Object.assign(o, { nc: r.nc });
+  // [v1.5.0] prima: Object.assign(o, { nc: r.nc });
+  if (r.type === 'bspline') Object.assign(o, { nc: r.nc, nv: r.nv || r.nc, closedU: !!r.closedU });
   return o;
 }
 
@@ -52,7 +53,8 @@ function meshPayload() {
   const pos = new Float32Array(M.nT * 9);
   for (let t = 0; t < M.nT; t++) for (let k = 0; k < 3; k++) { const v = M.T[3 * t + k]; pos.set([M.V[3 * v], M.V[3 * v + 1], M.V[3 * v + 2]], t * 9 + k * 3); }
   const f = M2S.features(M, null);
-  const info = { nT: M.nT, nV: M.nV, bodies: M.nComp, open: M.open, nonManifold: M.nonManifold, volume: M.volume, area: M.area, bbox: M.bbox, diag: M.diag, bodyList: f.bodies };
+  const si = M2S.findSelfIntersections(M);   // [v1.5.0] auto-intersezioni (solo rilevamento)
+  const info = { selfInt: si.count, selfIntPartial: si.partial, nT: M.nT, nV: M.nV, bodies: M.nComp, open: M.open, nonManifold: M.nonManifold, volume: M.volume, area: M.area, bbox: M.bbox, diag: M.diag, bodyList: f.bodies };
   return { pos, info };
 }
 

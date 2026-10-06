@@ -1,5 +1,5 @@
 // Mesh2STEP — tests/run_core.js
-// Versione: 1.4.0 — 2026-10-07 00:23
+// Versione: 1.5.0 — 2026-10-07 01:03
 // Esegue il core in Node su ogni file di tests/samples e scrive gli STEP in tests/out.
 // Uso: node tests/run_core.js [cartella_input] [cartella_output] [tol]
 const fs = require('fs'), path = require('path');
@@ -29,7 +29,7 @@ fs.mkdirSync(outDir, { recursive: true });
     }
     const cyl = seg.regions.filter(r => r.type === 'cylinder').map(r => 'Ø' + (2 * r.radius).toFixed(3) + (r.outward ? '' : ' foro'));
     const sph = seg.regions.filter(r => r.type === 'sphere').map(r => 'R' + r.radius.toFixed(3));
-    const extra = seg.regions.filter(r => ['cone', 'torus', 'thread', 'bspline'].includes(r.type)).map(r => r.type === 'cone' ? 'cono ' + (r.alpha * 180 / Math.PI).toFixed(2) + '°' : r.type === 'torus' ? 'toro R' + r.R.toFixed(3) + ' r' + r.r.toFixed(3) : r.type === 'thread' ? 'filetto ' + r.label + ' (' + r.score.toFixed(2) + ')' : 'bspline ' + r.nc + 'x' + r.nc + ' err ' + r.err.toFixed(4));
+    const extra = seg.regions.filter(r => ['cone', 'torus', 'thread', 'bspline'].includes(r.type)).map(r => r.type === 'cone' ? 'cono ' + (r.alpha * 180 / Math.PI).toFixed(2) + '°' : r.type === 'torus' ? 'toro R' + r.R.toFixed(3) + ' r' + r.r.toFixed(3) : r.type === 'thread' ? 'filetto ' + r.label + ' (' + r.score.toFixed(2) + ')' : 'bspline ' + r.nc + 'x' + (r.nv || r.nc) + (r.closedU ? ' chiusa' : '') + ' err ' + r.err.toFixed(4));
     const holes = feat.holes.map(h => 'Ø' + h.diameter.toFixed(2) + (h.through ? ' passante' : ' cieco') + ' p' + h.depth.toFixed(2));
     console.log(JSON.stringify({ file: f, tris: M.nT, ms: Date.now() - t0, stats: Object.fromEntries(Object.entries(seg.stats).filter(([, v]) => v)), cyl, sph, extra, holes, bodies: feat.bodies.map(b => b.name), faces: st.faces, edges: st.edges, solids: st.solids }));
   }

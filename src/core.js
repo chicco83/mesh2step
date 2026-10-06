@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — core.js
- * Versione: 1.4.1 — 2026-10-07 00:40 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
+ * Versione: 1.5.0 — 2026-10-07 01:03 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
  * ---------------------------------------------------------------------------
  * Motore indipendente dalla UI (gira nel Web Worker del browser e in Node per i test).
  *   1. Parsing  : STL (binario/ASCII), OBJ, 3MF (zip letto a mano + DecompressionStream)
@@ -12,7 +12,8 @@
  */
 (function (root) {
   'use strict';
-  const VERSION = '1.4.1';
+  // [2026-10-07 v1.5.0] const VERSION = '1.4.1';
+  const VERSION = '1.5.0';
 
   // ===================== Helper vettoriali (array [x,y,z]) =====================
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -449,9 +450,10 @@
         const cy = fitCylinder(M, patch, norm(axisFromNormals(M, patch)[0].vec)); if (cy && cy.maxErr <= tol) continue;
         const cn = fitCone(M, patch); if (cn && cn.maxErr <= tol) continue;
         const T = fitTorus(M, patch); if (T && T.maxErr <= tol) continue;
-        const B = fitBSpline(M, patch, tol); if (!B) continue;
+        // [v1.5.0] prima: const B = fitBSpline(M, patch, tol); if (!B) continue; regions.push({ id, type: 'bspline', tris: patch, nc: B.nc, cp: B.cp, segs: B.segs, err: B.maxErr, normal: B.normal, dist: B.dist });
+        const B = fitBSplineAny(M, patch, tol); if (!B) continue;
         const id = regions.length;
-        regions.push({ id, type: 'bspline', tris: patch, nc: B.nc, cp: B.cp, segs: B.segs, err: B.maxErr, normal: B.normal, dist: B.dist });
+        regions.push(Object.assign({ id, type: 'bspline', tris: patch }, bsFields(B)));
         for (const t of patch) face[t] = id;
       }
     }
@@ -781,8 +783,8 @@
         }
         // B-spline (NURBS non razionale) come campo di altezze
         if (opts.nurbs !== false && tris.length >= 16) {
-          const B = fitBSpline(M, tris, tol);
-          if (B) replace(blob, { type: 'bspline', nc: B.nc, cp: B.cp, segs: B.segs, err: B.maxErr, normal: B.normal, dist: B.dist });
+          const B = fitBSplineAny(M, tris, tol);   // [v1.5.0] prima: fitBSpline (solo patch aperte)
+          if (B) replace(blob, Object.assign({ type: 'bspline' }, bsFields(B)));   // [v1.5.0] prima: campi elencati a mano (solo aperta)
         }
       }
     }
@@ -1123,6 +1125,91 @@
     return null;
   }
 
+  // ---- [v1.5.0 2026-10-07] B-spline CHIUSA (periodica in angolo): superfici lisce che si richiudono su se stesse ----
+  // Tubo/vaso/guscio liscio "a stella" rispetto a un asse: ogni punto ha parametri (θ, z) attorno all'asse delle normali.
+  // Si adatta una B-spline cubica periodica in θ (nu punti di controllo, anello chiuso) e chiusa-bloccata in z (nv punti),
+  // risolvendo ai minimi quadrati le 3 coordinate dei punti di controllo (non il raggio: così la superficie 3D coincide con i dati).
+  // Per STEP la rete periodica (uniforme, non bloccata) viene convertita in B-spline bloccata con inserimento di nodi (Boehm):
+  // geometricamente chiusa (prima e ultima riga di controllo coincidono), flag U_CLOSED. Restituisce lo stesso formato di fitBSpline
+  // + { closedU, nv, segsV, outward, axis }.
+  function fitBSplineClosed(M, tris, tol) {
+    const pts = verticesOf(M, tris); if (pts.length < 64 || tris.length < 64) return null;
+    const ax = axisFromNormals(M, tris); if (!ax || !ax[0]) return null;
+    const a = norm(ax[0].vec);
+    let org = [0, 0, 0]; for (const p of pts) org = add(org, p); org = mul(org, 1 / pts.length);
+    const e1 = perp(a), e2 = cross(a, e1);
+    // a stella rispetto all'asse: la normale di ogni triangolo ha componente radiale non trascurabile e sempre dello stesso segno
+    let pos = 0, neg = 0;
+    for (const t of tris) {
+      const d = sub([M.C[3 * t], M.C[3 * t + 1], M.C[3 * t + 2]], org), rd = sub(d, mul(a, dot(d, a))), l = len(rd); if (l < 1e-9) return null;
+      const nr = dot([M.N[3 * t], M.N[3 * t + 1], M.N[3 * t + 2]], mul(rd, 1 / l));
+      if (nr > 0.25) pos++; else if (nr < -0.25) neg++; else return null;
+    }
+    if (pos && neg) return null;
+    const outward = pos > 0;
+    const th = [], zz = []; let z0 = Infinity, z1 = -Infinity;
+    for (const p of pts) { const d = sub(p, org), z = dot(d, a); th.push(Math.atan2(dot(d, e2), dot(d, e1))); zz.push(z); if (z < z0) z0 = z; if (z > z1) z1 = z; }
+    if (!(z1 - z0 > 1e-6)) return null;
+    { // la copertura angolare deve essere completa (nessun vuoto > 90°)
+      const s = th.slice().sort((x, y) => x - y); let gap = s[0] + 2 * Math.PI - s[s.length - 1];
+      for (let i = 1; i < s.length; i++) gap = Math.max(gap, s[i] - s[i - 1]);
+      if (gap > Math.PI / 2) return null;
+    }
+    // basi: periodica uniforme in u (t in [0,nu)), bloccata uniforme in v
+    const bu = (nu, t) => { const k = Math.floor(t), s = t - k, w = [(1 - s) ** 3 / 6, (3 * s ** 3 - 6 * s * s + 4) / 6, (-3 * s ** 3 + 3 * s * s + 3 * s + 1) / 6, s ** 3 / 6]; return w.map((x, m) => [((k + m) % nu + nu) % nu, x]); };
+    const bv = (nv, t) => {
+      const segs = nv - 3, x = Math.min(segs - 1e-9, Math.max(0, t * segs)), kn = [0, 0, 0, 0]; for (let i = 1; i < segs; i++) kn.push(i); kn.push(segs, segs, segs, segs);
+      let Nk = kn.slice(0, -1).map((kv, i) => (x >= kv && x < kn[i + 1] ? 1 : 0));
+      for (let p = 1; p <= 3; p++) { const nx = []; for (let i = 0; i < kn.length - 1 - p; i++) { const d1 = kn[i + p] - kn[i], d2 = kn[i + p + 1] - kn[i + 1]; nx.push((d1 > 0 ? (x - kn[i]) / d1 * Nk[i] : 0) + (d2 > 0 ? (kn[i + p + 1] - x) / d2 * Nk[i + 1] : 0)); } Nk = nx; }
+      const o = []; for (let i = 0; i < nv; i++) if (Nk[i]) o.push([i, Nk[i]]); return o;
+    };
+    const tU = (nu, th_) => ((th_ + Math.PI) / (2 * Math.PI) * nu) % nu, tV = z => (z - z0) / (z1 - z0);
+    for (const [nu, nv] of [[8, 6], [12, 8], [16, 10], [20, 14]]) {
+      const K = nu * nv, A = [...Array(K)].map(() => new Float64Array(K)), b = [new Float64Array(K), new Float64Array(K), new Float64Array(K)];
+      const rows = pts.map((p, i) => ({ U: bu(nu, tU(nu, th[i])), V: bv(nv, tV(zz[i])), p }));
+      for (const { U, V, p } of rows) {
+        const idx = [], val = [];
+        for (const [i, wu] of U) for (const [j, wv] of V) { idx.push(i * nv + j); val.push(wu * wv); }
+        for (let s = 0; s < idx.length; s++) { for (let c = 0; c < 3; c++) b[c][idx[s]] += val[s] * p[c]; for (let q = 0; q < idx.length; q++) A[idx[s]][idx[q]] += val[s] * val[q]; }
+      }
+      const lam = 1e-6 * (rows.length / K) * Math.max(1, (z1 - z0) ** 2 / 100);   // differenze seconde (periodiche in u)
+      for (let i = 0; i < nu; i++) for (let j = 0; j < nv; j++) for (const [di, dj] of [[1, 0], [0, 1]]) {
+        if (j + 2 * dj >= nv) continue;
+        const ids = [i * nv + j, ((i + di) % nu) * nv + j + dj, ((i + 2 * di) % nu) * nv + j + 2 * dj], w = [1, -2, 1];
+        for (let s = 0; s < 3; s++) for (let q = 0; q < 3; q++) A[ids[s]][ids[q]] += lam * w[s] * w[q];
+      }
+      const sol = [0, 1, 2].map(c => solve(A.map(r => Array.from(r)), Array.from(b[c]))); if (sol.some(x => !x)) continue;
+      const net = [...Array(nu)].map((_, i) => [...Array(nv)].map((__, j) => [sol[0][i * nv + j], sol[1][i * nv + j], sol[2][i * nv + j]]));
+      const evalS = (thv, zv) => { let s = [0, 0, 0]; for (const [i, wu] of bu(nu, tU(nu, thv))) for (const [j, wv] of bv(nv, Math.min(1, Math.max(0, tV(zv))))) s = add(s, mul(net[i][j], wu * wv)); return s; };
+      let mx = 0; for (let i = 0; i < pts.length; i++) mx = Math.max(mx, len(sub(evalS(th[i], zz[i]), pts[i])));
+      if (mx > tol) continue;
+      // rete periodica (nu+3 righe, indici modulo nu) -> bloccata: inserimento di 3 nodi a u=3 e 3 a u=nu+3 (Boehm), poi taglio dei bordi
+      let ctrl = []; for (let i = 0; i < nu + 3; i++) ctrl.push(net[i % nu]);
+      let kn = []; for (let i = 0; i < nu + 7; i++) kn.push(i);
+      const insert = u => {
+        let k = 3; while (!(kn[k] <= u && u <= kn[k + 1] && kn[k] < kn[k + 1])) k++;   // primo intervallo non vuoto che contiene u (anche all'estremo destro)
+        const Q = [];
+        for (let i = 0; i <= ctrl.length; i++) {
+          if (i <= k - 3) Q.push(ctrl[i]);
+          else if (i <= k) { const al = (u - kn[i]) / (kn[i + 3] - kn[i]); Q.push(ctrl[i].map((c, j) => c.map((x, m) => al * x + (1 - al) * ctrl[i - 1][j][m]))); }
+          else Q.push(ctrl[i - 1]);
+        }
+        ctrl = Q; kn.splice(k + 1, 0, u);
+      };
+      for (let r = 0; r < 3; r++) insert(3);
+      for (let r = 0; r < 3; r++) insert(nu + 3);
+      ctrl = ctrl.slice(3, ctrl.length - 3);
+      // dist: scarto di un punto dalla superficie ai suoi parametri (θ, z)
+      const dist = p => { const d = sub(p, org); return len(sub(evalS(Math.atan2(dot(d, e2), dot(d, e1)), dot(d, a)), p)); };
+      return { nc: nu, nv, cp: ctrl, segs: nu, segsV: nv - 3, maxErr: mx, normal: a, dist, closedU: true, outward };
+    }
+    return null;
+  }
+
+  // [v1.5.0] campi comuni di una regione B-spline (aperta o chiusa)
+  const bsFields = B => ({ nc: B.nc, nv: B.nv, cp: B.cp, segs: B.segs, segsV: B.segsV, closedU: B.closedU, outward: B.outward, err: B.maxErr, normal: B.normal, dist: B.dist });
+  const fitBSplineAny = (M, tris, tol) => fitBSpline(M, tris, tol) || fitBSplineClosed(M, tris, tol);
+
   // ---- Riparazione: chiude i buchi (anelli di bordo aperti) con ear clipping sul piano medio ----
   // ---- [v1.4.0 2026-10-07] Riparazione spigoli NON-MANIFOLD ----
   // 1) triangoli duplicati (stessi 3 vertici) -> ne resta uno; coppie "schiena a schiena" (orientamento opposto) si annullano;
@@ -1183,6 +1270,55 @@
     }
     if (names) { soup.triName = names; soup.names = M.names; }
     return { soup, removed: M.nT - n, duplicates: dup, fins };
+  }
+
+  // ---- [v1.5.0 2026-10-07] Rilevamento AUTO-INTERSEZIONI ----
+  // Due triangoli che non condividono vertici si intersecano (caso non complanare) se uno spigolo di uno buca l'altro:
+  // test segmento-triangolo (Möller-Trumbore) con tolleranza interna stretta, così i contatti su spigolo/vertice non contano.
+  // Accelerazione con griglia uniforme sui bounding box. Si ferma dopo `budgetMs` (risultato parziale: `partial`).
+  // Solo rilevamento: la riparazione richiede booleane robuste sulla mesh (vedi IMPROVEMENTS.md).
+  function findSelfIntersections(M, opts = {}) {
+    const maxPairs = opts.maxPairs || 200, budget = opts.budgetMs || 4000, t0 = Date.now();
+    const nT = M.nT, V = M.V, T = M.T, bb = new Float64Array(nT * 6);
+    let ext = 0;
+    for (let t = 0; t < nT; t++) {
+      for (let k = 0; k < 3; k++) { let lo = Infinity, hi = -Infinity; for (let j = 0; j < 3; j++) { const x = V[3 * T[3 * t + j] + k]; if (x < lo) lo = x; if (x > hi) hi = x; } bb[6 * t + k] = lo; bb[6 * t + 3 + k] = hi; ext += hi - lo; }
+    }
+    const mn = M.bbox[0], cell = Math.max(1.5 * ext / (3 * nT || 1), M.diag / 128), inv = 1 / cell;
+    const dims = [0, 1, 2].map(k => Math.floor((M.bbox[1][k] - mn[k]) * inv) + 1);
+    const grid = new Map(), key = (i, j, k) => (i * dims[1] + j) * dims[2] + k;
+    for (let t = 0; t < nT; t++) {
+      const lo = [0, 1, 2].map(k => Math.floor((bb[6 * t + k] - mn[k]) * inv)), hi = [0, 1, 2].map(k => Math.floor((bb[6 * t + 3 + k] - mn[k]) * inv));
+      for (let i = lo[0]; i <= hi[0]; i++) for (let j = lo[1]; j <= hi[1]; j++) for (let k = lo[2]; k <= hi[2]; k++) { const c = key(i, j, k); let l = grid.get(c); if (!l) grid.set(c, l = []); l.push(t); }
+    }
+    const P = i => [V[3 * i], V[3 * i + 1], V[3 * i + 2]];
+    // il segmento p->q buca il triangolo (a,b,c)? (parametri strettamente interni)
+    const pierce = (p, q, a, b, c) => {
+      const d = sub(q, p), e1 = sub(b, a), e2 = sub(c, a), h = cross(d, e2), det = dot(e1, h);
+      if (Math.abs(det) < 1e-14 * (len(e1) * len(e2) * len(d) || 1)) return false;   // parallelo / complanare
+      const f = 1 / det, s = sub(p, a), u = f * dot(s, h); if (u <= 1e-9 || u >= 1 - 1e-9) return false;
+      const qv = cross(s, e1), v = f * dot(d, qv); if (v <= 1e-9 || u + v >= 1 - 1e-9) return false;
+      const tt = f * dot(e2, qv); return tt > 1e-9 && tt < 1 - 1e-9;
+    };
+    const stamp = new Int32Array(nT), pairs = [], bad = new Set(); let count = 0, partial = false;
+    for (let t = 0; t < nT && !partial; t++) {
+      if ((t & 1023) === 0 && Date.now() - t0 > budget) { partial = true; break; }
+      const tv = [T[3 * t], T[3 * t + 1], T[3 * t + 2]], tp = tv.map(P);
+      const lo = [0, 1, 2].map(k => Math.floor((bb[6 * t + k] - mn[k]) * inv)), hi = [0, 1, 2].map(k => Math.floor((bb[6 * t + 3 + k] - mn[k]) * inv));
+      for (let i = lo[0]; i <= hi[0]; i++) for (let j = lo[1]; j <= hi[1]; j++) for (let k = lo[2]; k <= hi[2]; k++) {
+        const l = grid.get(key(i, j, k)); if (!l) continue;
+        for (const u of l) {
+          if (u <= t || stamp[u] === t + 1) continue; stamp[u] = t + 1;
+          let ov = true; for (let a = 0; a < 3; a++) if (bb[6 * t + a] > bb[6 * u + 3 + a] || bb[6 * u + a] > bb[6 * t + 3 + a]) { ov = false; break; }
+          if (!ov) continue;
+          const uv = [T[3 * u], T[3 * u + 1], T[3 * u + 2]]; if (uv.some(x => tv.includes(x))) continue;   // vicini: condividono almeno un vertice
+          const up = uv.map(P); let hit = false;
+          for (let a = 0; a < 3 && !hit; a++) hit = pierce(tp[a], tp[(a + 1) % 3], up[0], up[1], up[2]) || pierce(up[a], up[(a + 1) % 3], tp[0], tp[1], tp[2]);
+          if (hit) { count++; bad.add(t); bad.add(u); if (pairs.length < maxPairs) pairs.push([t, u]); }
+        }
+      }
+    }
+    return { count, pairs, tris: bad, partial };
   }
 
   function fillHoles(M) {
@@ -1344,7 +1480,7 @@
         let o = 0; for (const t of tris) { const p = [M.C[3 * t], M.C[3 * t + 1], M.C[3 * t + 2]], d = sub(p, T.center), h = dot(d, T.axis), q = add(T.center, mul(norm(sub(d, mul(T.axis, h))), T.R)); o += M.A[t] * dot(Nv(t), sub(p, q)); }
         return { type, err: T.maxErr, center: T.center, axis: T.axis, R: T.R, r: T.r, outward: o >= 0 };
       }
-      if (type === 'bspline') { const B = fitBSpline(M, tris, maxErr); return B && { type, err: B.maxErr, nc: B.nc, cp: B.cp, segs: B.segs, normal: B.normal, dist: B.dist }; }
+      if (type === 'bspline') { const B = fitBSplineAny(M, tris, maxErr); return B && Object.assign({ type }, bsFields(B)); }   // [v1.5.0] prima: fitBSpline + campi a mano
       if (type === 'freeform') return { type, err: 0 };
       return null;
     };
@@ -1647,8 +1783,13 @@
         surf = E(`TOROIDAL_SURFACE('',${place(r.center, r.axis, perp(r.axis))},${stepNum(r.R)},${stepNum(r.r)})`); sense = r.outward ? '.T.' : '.F.';
       } else if (r.type === 'bspline') {
         const rows = r.cp.map(row => '(' + row.map(pt).join(',') + ')').join(',');
+        // [v1.5.0] superficie chiusa in u (B-spline bloccata con prima e ultima riga coincidenti): nodi v propri (segsV), U_CLOSED vero
+        const sv = r.closedU ? r.segsV : r.segs;
         const mult = [4, ...Array(r.segs - 1).fill(1), 4].join(','), kn = [...Array(r.segs + 1).keys()].map(i => stepNum(i)).join(',');
-        surf = E(`B_SPLINE_SURFACE_WITH_KNOTS('',3,3,(${rows}),.UNSPECIFIED.,.F.,.F.,.F.,(${mult}),(${mult}),(${kn}),(${kn}),.UNSPECIFIED.)`);
+        const multV = [4, ...Array(sv - 1).fill(1), 4].join(','), knV = [...Array(sv + 1).keys()].map(i => stepNum(i)).join(',');
+        // [v1.5.0] prima: ...,.UNSPECIFIED.,.F.,.F.,.F.,(${mult}),(${mult}),(${kn}),(${kn}),.UNSPECIFIED.) con gli stessi nodi in u e v
+        surf = E(`B_SPLINE_SURFACE_WITH_KNOTS('',3,3,(${rows}),.UNSPECIFIED.,${r.closedU ? '.T.' : '.F.'},.F.,.F.,(${mult}),(${multV}),(${kn}),(${knV}),.UNSPECIFIED.)`);
+        if (r.closedU) sense = r.outward ? '.T.' : '.F.';
       }
       else if (r.type === 'freeform') { const t = fi.tris[0], n = [M.N[3 * t], M.N[3 * t + 1], M.N[3 * t + 2]]; surf = E(`PLANE('',${place(M.P(M.T[3 * t]), n, perp(n))})`); }
       else if (r.type === 'cylinder') { surf = E(`CYLINDRICAL_SURFACE('',${place(r.origin, r.axis, perp(r.axis))},${stepNum(r.radius)})`); sense = r.outward ? '.T.' : '.F.'; }
@@ -1794,7 +1935,7 @@
     return { M, seg };
   }
 
-  const API = { VERSION, parseFile, parseSTL, parseOBJ, parse3MF, buildMesh, segment, exportSTEP, analyse, fitCylinder, fitSphere, fitPlane, fitCone, fitTorus, fitBSpline, detectThread, threadsToCylinders, fixNonManifold, reportPdf, fillHoles, features, deviation, surfDist, editRegions, regionStats };
+  const API = { VERSION, parseFile, parseSTL, parseOBJ, parse3MF, buildMesh, segment, exportSTEP, analyse, fitCylinder, fitSphere, fitPlane, fitCone, fitTorus, fitBSpline, detectThread, threadsToCylinders, fixNonManifold, findSelfIntersections, reportPdf, fillHoles, features, deviation, surfDist, editRegions, regionStats };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   else root.M2S = API;
 })(typeof self !== 'undefined' ? self : this);

@@ -1,5 +1,19 @@
 # CHANGELOG — Mesh2STEP
-Versione documento: 1.4.1 — 2026-10-07 00:40
+Versione documento: 1.5.0 — 2026-10-07 01:03
+
+## 12. [1.5.0] — 2026-10-07 01:03 — Auto-intersezioni (rilevamento) e B-spline chiuse
+- **Rilevamento auto-intersezioni** (`findSelfIntersections`): test segmento-triangolo (Möller-Trumbore, interno stretto) con griglia
+  uniforme; salta i triangoli che condividono vertici; budget 4 s (risultato `partial`). Il Worker lo calcola al caricamento: riga
+  *Auto-intersezioni* nelle informazioni e avviso nella barra di stato. **Solo rilevamento**: la riparazione richiede booleane robuste
+  sulla mesh (scelta di non farla, vedi `IMPROVEMENTS.md`). Test: `tests/test_selfint.js` (i campioni chiusi: 0; due scatole sovrapposte: >0), in CI.
+- **B-spline per superfici che si richiudono** (`fitBSplineClosed`): tubo/vaso/guscio liscio «a stella» rispetto a un asse → B-spline cubica
+  **periodica in angolo** × bloccata in z, minimi quadrati sulle 3 coordinate dei punti di controllo (nu fino a 20, nv fino a 14).
+  In STEP la rete periodica è convertita in B-spline bloccata con inserimento di nodi, `U_CLOSED=.T.`, senso della faccia dal segno della
+  componente radiale delle normali. Usata in 4-0, nei blob 4d e in *Converti/unisci → B-spline/Automatico*.
+- Nuovo campione `vase.stl` (rivoluzione con profilo ondulato schiacciata in X): **prima 3 583 facce (mosaico di cilindri/sfere/freeform), ora 3 facce**
+  (1 B-spline chiusa + 2 piani), `valid=True`, volume 27409,90 (mesh 27407,17). Gli altri 16 STEP invariati.
+- Il pannello della faccia mostra «nu × nv (chiusa)». Il riassunto del Worker porta `nv` e `closedU`.
+- Rollback: `git revert` del commit; senza `fitBSplineClosed` le superfici chiuse tornano sfaccettate/mosaico come in 1.4.1.
 
 ## 11. [1.4.1] — 2026-10-07 00:40 — App Windows: risorse nelle sottocartelle (primo avvio reale su Windows)
 - **Bug trovato provando l'exe su Windows**: la finestra si apriva ma restava vuota/non inizializzata: `index.html` e `manifest` si caricavano,

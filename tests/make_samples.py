@@ -1,5 +1,5 @@
 # Mesh2STEP — tests/make_samples.py
-# Versione: 1.4.0 — 2026-10-07 00:23
+# Versione: 1.5.0 — 2026-10-07 01:03
 # Genera mesh di prova (STL) con geometria nota tramite manifold3d (booleane robuste).
 import sys, os
 import numpy as np
@@ -87,6 +87,13 @@ def wf(v):
     return (x, y, z)
 bump = bump.warp(wf)
 save(bump, 'bump.stl')
+
+# 10-bis) [v1.5.0] Vaso: solido di rivoluzione con profilo ondulato (raggio 12 +/- 3,5) schiacciato in X (x1,3) -> sezioni ellittiche.
+# Superficie liscia che si richiude su se stessa: nessuna primitiva la descrive -> B-spline chiusa (periodica in angolo) + 2 piani (tappi)
+from manifold3d import CrossSection
+prof = [(0.0, 0.0)] + [(12 + 3.5 * math.sin(2 * math.pi * 1.5 * z / 40), z) for z in np.linspace(0, 40, 61)] + [(0.0, 40.0)]
+vase = Manifold.revolve(CrossSection([prof]), 96).warp(lambda v: (v[0] * 1.3, v[1], v[2]))
+save(vase, 'vase.stl')
 
 # 11) 3MF con due oggetti nominati e trasformazioni di build (traslazioni)
 def mesh_xml(m, oid, name):
