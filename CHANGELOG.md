@@ -1,5 +1,13 @@
 # CHANGELOG — Mesh2STEP
-Versione documento: 1.4.0 — 2026-10-07 00:23
+Versione documento: 1.4.1 — 2026-10-07 00:40
+
+## 11. [1.4.1] — 2026-10-07 00:40 — App Windows: risorse nelle sottocartelle (primo avvio reale su Windows)
+- **Bug trovato provando l'exe su Windows**: la finestra si apriva ma restava vuota/non inizializzata: `index.html` e `manifest` si caricavano,
+  ma `src/*`, `vendor/*`, `icons/*` davano 404. Causa: sui build Windows (GitHub `windows-latest`) `%(RecursiveDir)` del csproj produce
+  `www/src\app.js` (backslash), mentre `Program.cs` cercava `www/src/app.js`; sul build Linux funzionava, per questo non era emerso.
+- Fix in `desktop/Program.cs`: dizionario dei nomi di risorsa normalizzati (`\` → `/`).
+- Provato (exe 1.4.0, prima del fix) con debug remoto WebView2: avvio, apertura file da argomento (`?url=` → `/open/<nome>` servito: 200, 2,7 MB).
+- Rollback: `git revert` del commit.
 
 ## 10. [1.4.0] — 2026-10-07 00:23 — Filettature, sfere/tori, non-manifold, PDF, deviazione
 - **Filettature → cilindro nominale** (opzione *Filettature come cilindro nominale (STEP)*, default **spenta**): i vertici del filetto

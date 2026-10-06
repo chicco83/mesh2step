@@ -1,5 +1,5 @@
 // Mesh2STEP Desktop — Program.cs
-// Versione: 1.3.0 — 2026-10-06 13:40 (Europe/Rome)
+// Versione: 1.4.1 — 2026-10-07 00:40 (Europe/Rome)
 // Finestra WinForms con WebView2. Tutti i file web sono risorse incorporate servite su
 // https://app.mesh2step/ tramite WebResourceRequested (nessun file estratto su disco).
 // Argomento da riga di comando (o "Apri con…" / trascinamento sull'exe): il file viene servito su
@@ -25,6 +25,13 @@ namespace Mesh2Step.Desktop
             [".png"] = "image/png", [".json"] = "application/json", [".webmanifest"] = "application/manifest+json",
             [".stl"] = "application/octet-stream", [".obj"] = "text/plain", [".3mf"] = "application/octet-stream",
         };
+
+        // nome normalizzato ('/') -> nome reale della risorsa incorporata
+        static readonly Dictionary<string, string> Resources = new(StringComparer.Ordinal);
+        static Program()
+        {
+            foreach (var n in Assembly.GetExecutingAssembly().GetManifestResourceNames()) Resources[n.Replace('\\', '/')] = n;
+        }
 
         [STAThread]
         static void Main(string[] args)
@@ -53,7 +60,9 @@ namespace Mesh2Step.Desktop
                     if (path == "") path = "index.html";
                     Stream body = null;
                     if (path.StartsWith("open/") && fileArg != null) body = File.OpenRead(fileArg);
-                    else body = Assembly.GetExecutingAssembly().GetManifestResourceStream("www/" + path);
+                    // [2026-10-07 v1.4.1] prima: else body = Assembly.GetExecutingAssembly().GetManifestResourceStream("www/" + path);
+                    // sui build Windows %(RecursiveDir) usa '\' (www/src\app.js): i nomi si confrontano con '\' -> '/'
+                    else body = Resources.TryGetValue("www/" + path, out var resName) ? Assembly.GetExecutingAssembly().GetManifestResourceStream(resName) : null;
                     if (body == null) { e.Response = core.Environment.CreateWebResourceResponse(null, 404, "Not Found", ""); return; }
                     Mime.TryGetValue(Path.GetExtension(path), out var type);
                     e.Response = core.Environment.CreateWebResourceResponse(body, 200, "OK", "Content-Type: " + (type ?? "application/octet-stream"));
