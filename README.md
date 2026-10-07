@@ -1,5 +1,5 @@
 # Mesh2STEP
-Versione: 1.5.0 — 2026-10-07 01:03
+Versione: 1.5.1 — 2026-10-07 07:15
 <!-- [2026-10-06 13:45] Versione precedente 1.0.1 (2026-10-06 13:10): README delle funzioni v1.0
      (piani, cilindri, sfere); aggiornato con tutte le funzioni v1.1–v1.3. -->
 
@@ -68,7 +68,7 @@ raggi di toro, cilindri coassiali sulla stessa retta — ogni modifica solo se l
 |---|---|
 | **Colori per tipo** | 8 colori + variazione di tono tra facce adiacenti |
 | **Contorni** | Spigoli tra superfici diverse, attivabili |
-| **Deviazione** | Heatmap mesh ↔ superficie (verde 0 → rosso ≥ tolleranza) con valore massimo |
+| **Deviazione** | Heatmap mesh ↔ superficie (verde 0 → rosso ≥ tolleranza) con valore massimo; con *Filettature come cilindro nominale* spuntata mostra lo scarto del filetto dal cilindro |
 | **Viste** | Iso, Alto, Fronte, Destra; **F** = adatta |
 | **Picking** | Scheda con tipo, area, Ø, lunghezza, asse, angolo, R/r, passo, scarto massimo |
 

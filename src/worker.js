@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — worker.js
- * Versione: 1.5.0 — 2026-10-07 01:03 (Europe/Rome)
+ * Versione: 1.5.1 — 2026-10-07 07:15 (Europe/Rome)
  * Versione precedente archiviata in archive/worker_v1.0.0_20261005-1710.js (2026-10-06: riscrittura
  * per editing, riparazione, export STL/OBJ, deviazione, corpi).
  *
@@ -63,8 +63,8 @@ function result(extra = {}) {
   const face = new Int32Array(seg.face), edges = boundaryLines();
   const dv = M2S.deviation(M, seg), feat = M2S.features(M, seg);
   return {
-    msg: Object.assign({ face, edges, dev: dv.dev, devMax: dv.max, regions: seg.regions.map(regionSummary), stats: M2S.regionStats(seg.regions), holes: feat.holes, bodies: feat.bodies }, extra),
-    transfer: [face.buffer, edges.buffer, dv.dev.buffer],
+    msg: Object.assign({ face, edges, dev: dv.dev, devMax: dv.max, devThr: dv.devThr, devThrMax: dv.maxThr, regions: seg.regions.map(regionSummary), stats: M2S.regionStats(seg.regions), holes: feat.holes, bodies: feat.bodies }, extra),
+    transfer: [face.buffer, edges.buffer, dv.dev.buffer, dv.devThr.buffer],
   };
 }
 

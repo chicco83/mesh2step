@@ -1,5 +1,5 @@
 # MIGLIORIE — Mesh2STEP
-Versione documento: 1.5.0 — 2026-10-07 01:03
+Versione documento: 1.5.1 — 2026-10-07 07:15
 <!-- [2026-10-06 13:45] versione precedente 1.0.0 (2026-10-05 17:10): elenco proposte tutte "da fare";
      aggiornato con lo stato di realizzazione. -->
 
@@ -18,7 +18,7 @@ Stato: ✅ fatto · 🟡 parziale · ⏸️ valutato e rinviato.
 | 8 | Riparazione mesh | 🟡 | 1.5.0 | Chiusura buchi (anche annidati) e **spigoli non-manifold** (duplicati, schiena-a-schiena, alette). **Auto-intersezioni: rilevate e segnalate (1.5.0), non riparate** (servono booleane robuste: scelta di non implementarle nel browser senza una libreria) |
 | 9 | Report fori CSV + PDF | ✅ | 1.4.0 | CSV per Excel (1.2.0); PDF con disegno quotato, fori numerati, tabelle (1.4.0) |
 | 10 | Export STL / OBJ | ✅ | 1.2.0 | |
-| 11 | Heatmap di deviazione | ✅ | 1.2.0 | B-spline: dal 1.4.0 per triangolo (scarto verticale); freeform e filettature restano a 0 (nessuna superficie di riferimento) |
+| 11 | Heatmap di deviazione | ✅ | 1.5.1 | B-spline per triangolo (1.4.0); **filettature: scarto dal cilindro nominale** con l'opzione «filettature come cilindro» (1.5.1); freeform = 0 per scelta (esportati sfaccettati, esatti) |
 | 12 | "Apri in Fusion/FreeCAD" | 🟡 | 1.2.0 | Da browser non si può lanciare un CAD locale senza server: c'è **Condividi STEP** (telefono) e l'app Windows apre i file dal sistema |
 | 13 | 3MF: trasformazioni e nomi | ✅ | 1.1.0 | |
 | 14 | PWA offline | ✅ | 1.3.0 | |
@@ -33,5 +33,5 @@ Stato: ✅ fatto · 🟡 parziale · ⏸️ valutato e rinviato.
 2. ~~Pulsante «Converti in STEP»~~ ✅ 2026-10-07 nel repo 3d-stl-multipart-maker v0.6.2-beta (pannello Esporta; `postMessage`). Non provato sulla versione Windows.
 3. ~~Auto-intersezioni: rilevamento~~ ✅ rilevamento 1.5.0 (avviso + test); riparazione rinviata (booleane robuste).
 4. ~~B-spline per superfici che si richiudono~~ ✅ 1.5.0 (superfici a stella rispetto a un asse). Restano gusci chiusi non a stella.
-5. Deviazione per freeform e filettature (serve una superficie di riferimento).
+5. ~~Deviazione per freeform e filettature~~ ✅ filettature 1.5.1; freeform volutamente 0 (esatti).
 6. Report PDF su più pagine quando i fori superano ~28 righe.

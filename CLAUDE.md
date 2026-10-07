@@ -1,5 +1,5 @@
 # CLAUDE.md — Mesh2STEP
-Versione: 1.5.0 — 2026-10-07 01:03
+Versione: 1.5.1 — 2026-10-07 07:15
 <!-- [2026-10-06 14:10] versione precedente (2026-10-06 13:45, commit 61c8f81): solo regole di versioning,
      documenti, test, git e progetto. Ora anche stato, ambiente, mappa del codice, insidie e prossimi passi
      per riprendere il lavoro da Claude Code. Le regole precedenti sono riportate invariate qui sotto. -->
@@ -14,12 +14,12 @@ Replica clean-room di mesh2solid.thavision.com con le funzioni "Pro" gratis e va
 - Repo: `https://github.com/chicco83/mesh2step` — sito: `https://chicco83.github.io/mesh2step/` (Pages da `main` / root)
 - Copia locale dell'utente: `G:\Il mio Drive\CRISTIANO\VIBE CODING\mesh2step` (cartella Google Drive)
 
-## 2. Stato al 2026-10-07 01:03
+## 2. Stato al 2026-10-07 07:15
 | Voce | Stato |
 |---|---|
-| Versione | **1.5.0** (`main`; v1.4.0 `d7cae0c`, v1.4.1 `bbabd2f`) — da committare/pushare e provare in CI e su Pages |
+| Versione | **1.5.1** (`main`; v1.5.0 `d06ab31`) — CI e Pages da controllare |
 | Sito Pages | ✅ online alla 1.4.0, provato il 2026-10-07: bolt_m6 (opzione filettatura→cilindro: 5 facce, 2 cilindri), PDF, toro (2 facce toroidali), service worker attivo, console pulita. Provati in locale (1.3.2–1.4.0): tema chiaro/scuro, selezione, unione/annulla, deviazione, riparazione, export STEP/STL/OBJ |
-| Test core + OpenCASCADE | 17 STEP `valid=True` (16 + `vase`); `test_repair.js`, `test_pdf.js`, `test_selfint.js` ok (vedi §6) |
+| Test core + OpenCASCADE | 17 STEP `valid=True` (16 + `vase`); `test_repair.js`, `test_pdf.js`, `test_selfint.js`, `test_devthr.js` ok (vedi §6) |
 | CI GitHub (`ci.yml`) | ✅ verde dalla 1.3.2 (fix dipendenze Python); dalla 1.4.0 esegue anche i test di riparazione e PDF — **controllare l'esito del push 1.4.0** |
 | App Windows (`desktop/`) | ✅ provata su Windows 11 il 2026-10-07 con la build CI 1.4.1 (WebView2 154): avvio, apertura file da argomento, analisi, export STEP/PDF/STL salvati su disco (STEP rivalidati con OCP: `valid=True`). Bug trovato e corretto: risorse in sottocartelle (backslash in `RecursiveDir`). **Non provati**: «Apri con…»/trascinamento sull'exe, SmartScreen su altro PC, installazione pulita senza WebView2 |
 | Migliorie | stato per voce in `IMPROVEMENTS.md` (✅ / 🟡 parziale / ⏸️ rinviata) |
@@ -90,6 +90,7 @@ python3 tests/check_step.py        # validazione con OpenCASCADE (OCP): tutti va
 node tests/test_repair.js          # riparazione non-manifold (exit 1 se fallisce)
 node tests/test_pdf.js             # report PDF: struttura e conteggio fori
 node tests/test_selfint.js         # auto-intersezioni: campioni chiusi = 0, due scatole sovrapposte > 0
+node tests/test_devthr.js          # deviazione filetti dal cilindro nominale (bolt_m6: ~0,63 mm)
 node build.mjs                     # build single-file in dist/
 ```
 Per l'interfaccia: prova nel browser caricamento, analisi, selezione, modifica/annulla, tutti gli export.
@@ -148,12 +149,13 @@ Tutti devono essere `valid=True`; `check_step.py` esce con codice 1 altrimenti.
 - **Timestamp**: usare l'ora reale (`Get-Date` / `date`), mai orari stimati.
 
 ## 8. Prossimi passi (in ordine di priorità)
+Fatti il 2026-10-07 (v1.5.1): deviazione dei filetti dal cilindro nominale (freeform = 0 per scelta).
 Fatti il 2026-10-07 (v1.5.0): rilevamento auto-intersezioni, B-spline chiuse, pulsante «Converti in STEP» in 3D STL Multipart Maker v0.6.2-beta.
 Fatti il 2026-10-07 (v1.4.0): filettature→cilindro nominale, sfere spurie, sfera/toro completi, riparazione non-manifold, report PDF, deviazione B-spline per triangolo.
 1. ~~Provare l'exe Windows~~ ✅ fatto il 2026-10-07 (v1.4.1). Restano da provare «Apri con…» / trascinamento sull'exe e un PC senza WebView2.
    apertura file da argomento/trascinamento, download STEP dentro WebView2. Correggere `Program.cs` se serve. (Serve un PC Windows.)
-2. **Controllare l'esito di `ci.yml`** dopo il push della 1.4.0.
+2. **Controllare l'esito di `ci.yml`** dopo il push della 1.5.1 (mai verificato dalla 1.4.0 in poi).
 3. ~~Pulsante «Converti in STEP»~~ ✅ fatto nel repo `3d-stl-multipart-maker` (v0.6.2-beta); da provare dal vivo (e dalla sua versione Windows).
 4. Auto-intersezioni: ✅ rilevamento (1.5.0); **riparazione** rinviata (serve una booleana robusta).
-5. B-spline chiuse ✅ per superfici a stella (1.5.0); restano gusci chiusi non a stella e la **deviazione per freeform e filettature**.
+5. B-spline chiuse ✅ per superfici a stella (1.5.0); restano i gusci chiusi non a stella. Deviazione filetti ✅ 1.5.1 (freeform = 0 per scelta).
 6. Report PDF su più pagine (oltre ~28 fori le righe vengono troncate con «… (+n)»).

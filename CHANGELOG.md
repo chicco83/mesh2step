@@ -1,5 +1,14 @@
 # CHANGELOG — Mesh2STEP
-Versione documento: 1.5.0 — 2026-10-07 01:03
+Versione documento: 1.5.1 — 2026-10-07 07:15
+
+## 13. [1.5.1] — 2026-10-07 07:15 — Deviazione dei filetti dal cilindro nominale
+- `deviation` restituisce anche `devThr`/`maxThr`: come `dev`, ma i triangoli del **filetto** sono confrontati con il cilindro nominale
+  (esterno: Ø ISO o cresta; interno: fondo del foro), lo stesso dell'opzione STEP *Filettature come cilindro nominale*.
+  Con quella casella spuntata la mappa **Deviazione** usa `devThr` (e il massimo in legenda): `bolt_m6` passa da max 0,0000 a 0,63 mm sul filetto.
+  Senza l'opzione la mappa resta com'era: il filetto esportato sfaccettato è esatto (0).
+- **Freeform**: deviazione resta 0 **per scelta**: sono esportati sfaccettati (esatti) e non hanno una superficie di riferimento da confrontare. Non riproporre.
+- Worker: `devThr` e `devThrMax` nel risultato. Test: `tests/test_devthr.js` (in CI). Provato in locale nell'interfaccia (bolt_m6).
+- Rollback: `git revert` del commit; l'export STEP non cambia.
 
 ## 12. [1.5.0] — 2026-10-07 01:03 — Auto-intersezioni (rilevamento) e B-spline chiuse
 - **Rilevamento auto-intersezioni** (`findSelfIntersections`): test segmento-triangolo (Möller-Trumbore, interno stretto) con griglia

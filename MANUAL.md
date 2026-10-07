@@ -1,5 +1,5 @@
 # MANUALE — Mesh2STEP
-Versione documento: 1.5.0 — 2026-10-07 01:03
+Versione documento: 1.5.1 — 2026-10-07 07:15
 <!-- [2026-10-06 13:45] versione precedente 1.0.0 (2026-10-05 17:10) nel repository git (commit 729f9ed). -->
 
 ## 1. Avvio
@@ -43,7 +43,7 @@ Versione documento: 1.5.0 — 2026-10-07 01:03
 
 Il colore dipende **solo dal tipo** di superficie (dalla 1.3.1): facce vicine dello stesso tipo hanno lo stesso colore; i confini si vedono con il pulsante *Contorni*.
 
-**Deviazione**: verde = 0, giallo = metà tolleranza, rosso ≥ tolleranza; la legenda mostra la deviazione massima.
+**Deviazione**: verde = 0, giallo = metà tolleranza, rosso ≥ tolleranza; la legenda mostra la deviazione massima. Le filettature (esportate sfaccettate) risultano a 0; spuntando *Filettature come cilindro nominale* la mappa mostra lo scarto del filetto dal cilindro nominale. I freeform sono sempre esatti (0).
 
 ## 5. Modifica facce
 - Tocca una faccia per selezionarla e vederne i dati; **Selezione multipla** (o Shift/Ctrl+clic) per aggiungerne altre.

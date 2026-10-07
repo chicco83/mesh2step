@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — core.js
- * Versione: 1.5.0 — 2026-10-07 01:03 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
+ * Versione: 1.5.1 — 2026-10-07 07:15 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
  * ---------------------------------------------------------------------------
  * Motore indipendente dalla UI (gira nel Web Worker del browser e in Node per i test).
  *   1. Parsing  : STL (binario/ASCII), OBJ, 3MF (zip letto a mano + DecompressionStream)
@@ -13,7 +13,8 @@
 (function (root) {
   'use strict';
   // [2026-10-07 v1.5.0] const VERSION = '1.4.1';
-  const VERSION = '1.5.0';
+  // [2026-10-07 v1.5.1] const VERSION = '1.5.0';
+  const VERSION = '1.5.1';
 
   // ===================== Helper vettoriali (array [x,y,z]) =====================
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -1535,16 +1536,23 @@
     }
   }
   function deviation(M, seg) {
-    const dev = new Float32Array(M.nT); let mx = 0;
+    // [v1.5.1] devThr: come dev, ma le filettature sono confrontate con il cilindro nominale (quello dell'opzione STEP «filettature come cilindro»):
+    // di default la filettura è esportata sfaccettata = esatta (dev 0); i freeform sono sempre sfaccettati = esatti (dev 0, nessuna superficie da confrontare)
+    const dev = new Float32Array(M.nT), devThr = new Float32Array(M.nT); let mx = 0, mxThr = 0;
     for (let t = 0; t < M.nT; t++) {
       const r = seg.regions[seg.face[t]]; let d = 0;
+      if (r.type === 'thread') {
+        const R = r.internal ? r.rmin : (r.nominal ? r.nominal / 2 : r.rmax); let dt = 0;
+        for (let k = 0; k < 3; k++) { const q = sub(M.P(M.T[3 * t + k]), r.origin); dt = Math.max(dt, Math.abs(len(sub(q, mul(r.axis, dot(q, r.axis)))) - R)); }
+        devThr[t] = dt; mxThr = Math.max(mxThr, dt); continue;
+      }
       // [2026-10-06 v1.3.2] prima: if (r.type === 'bspline' && r.devTri) d = r.devTri.get(t) || 0;  (devTri non è mai impostato -> sempre 0, mappa tutta verde)
       // [v1.4.0] prima (1.3.2): sempre r.err (un solo valore per regione); ora scarto verticale vero dei vertici del triangolo
       if (r.type === 'bspline') { if (r.dist) for (let k = 0; k < 3; k++) d = Math.max(d, r.dist(M.P(M.T[3 * t + k]))); else d = r.err || 0; }
       else for (let k = 0; k < 3; k++) d = Math.max(d, surfDist(r, M.P(M.T[3 * t + k])));
-      dev[t] = d; mx = Math.max(mx, d);
+      dev[t] = d; devThr[t] = d; mx = Math.max(mx, d); mxThr = Math.max(mxThr, d);
     }
-    return { dev, max: mx };
+    return { dev, max: mx, devThr, maxThr: mxThr };
   }
 
   // ============================ 5. EXPORT STEP ============================

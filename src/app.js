@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — app.js
- * Versione: 1.5.0 — 2026-10-07 01:03 (Europe/Rome)
+ * Versione: 1.5.1 — 2026-10-07 07:15 (Europe/Rome)
  * Versione precedente archiviata: archive/app_v1.0.1_20261006-1310.js
  * (2026-10-06: riscritta per editing facce, corpi, report CSV, export STL/OBJ, heatmap deviazione,
  *  viste, IT/EN, tema chiaro, condivisione, PWA e API di integrazione).
@@ -11,7 +11,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 // [2026-10-07 v1.5.0] const VERSION = '1.4.1';
-const VERSION = '1.5.0';
+// [2026-10-07 v1.5.1] const VERSION = '1.5.0';
+const VERSION = '1.5.1';
 const $ = id => document.getElementById(id);
 const store = { get: k => { try { return localStorage.getItem('m2s.' + k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem('m2s.' + k, v); } catch { /* storage non disponibile */ } } };
 
@@ -163,15 +164,19 @@ function paint() {
     if (res) {
       const f = res.face[i];
       if (sel.has(f)) c = selC;
-      else if (showDev) c = devColor(res.dev[i] / Math.max(1e-9, analysedTol));
+      else if (showDev) c = devColor(devArr()[i] / Math.max(1e-9, analysedTol));   // [v1.5.1] prima: res.dev[i]
       else { if (!cache.has(f)) cache.set(f, regionColor(res.regions[f])); c = cache.get(f); }
     }
     for (let k = 0; k < 3; k++) { a[i * 9 + k * 3] = c.r; a[i * 9 + k * 3 + 1] = c.g; a[i * 9 + k * 3 + 2] = c.b; }
   }
   col.needsUpdate = true;
   $('devlegend').hidden = !showDev || !res;
-  if (res) $('devmax').textContent = '≥ ' + fmt(analysedTol, 3) + ' mm (max ' + fmt(res.devMax, 4) + ')';
+  if (res) $('devmax').textContent = '≥ ' + fmt(analysedTol, 3) + ' mm (max ' + fmt(thrDev() ? res.devThrMax : res.devMax, 4) + ')';   // [v1.5.1] prima: sempre res.devMax
 }
+// [v1.5.1] con l'opzione «filettature come cilindro nominale» la mappa confronta il filetto col cilindro nominale
+const thrDev = () => $('o_thrcyl').checked && res && res.devThr;
+const devArr = () => (thrDev() ? res.devThr : res.dev);
+$('o_thrcyl').addEventListener('change', () => { if (showDev) paint(); });
 function showMesh(positions) {
   for (const o of [meshObj, edgeObj]) if (o) { scene.remove(o); o.geometry.dispose(); o.material.dispose(); }
   edgeObj = null;

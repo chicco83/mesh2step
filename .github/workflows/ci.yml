@@ -1,5 +1,5 @@
 # Mesh2STEP — CI
-# Versione: 1.5.0 — 2026-10-07 01:03 (Europe/Rome)
+# Versione: 1.5.1 — 2026-10-07 07:15 (Europe/Rome)
 # A ogni push / pull request: genera le mesh di prova, esegue il core, valida gli STEP con
 # OpenCASCADE e crea la build single-file (scaricabile come artifact).
 name: ci
@@ -30,6 +30,8 @@ jobs:
         run: node tests/test_pdf.js
       - name: Auto-intersezioni
         run: node tests/test_selfint.js
+      - name: Deviazione filetti
+        run: node tests/test_devthr.js
       - name: Build single-file
         run: node build.mjs
       - uses: actions/upload-artifact@v4

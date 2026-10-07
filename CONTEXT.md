@@ -1,5 +1,5 @@
 # CONTEXT — Mesh2STEP
-Versione documento: 1.5.0 — 2026-10-07 01:03
+Versione documento: 1.5.1 — 2026-10-07 07:15
 
 ## Scopo
 Web app che converte mesh triangolari (STL, OBJ, 3MF) in file STEP con **geometria CAD reale**:
@@ -72,7 +72,7 @@ index.html ── src/app.js (UI, viewer three.js, i18n, editing, export, API in
 - App Windows con WebView2 (stessa scelta di 3D STL Multipart Maker), file web come risorse incorporate. [2026-10-07] I nomi delle risorse si normalizzano (`\` → `/`): `%(RecursiveDir)` dà backslash sui build Windows.
 
 ## Limiti noti v1.4.0
-- B-spline per zone "campo di altezze" e (1.5.0) superfici chiuse a stella; deviazione di freeform e filettature = 0 (nessuna superficie di riferimento).
+- B-spline per zone "campo di altezze" e (1.5.0) superfici chiuse a stella; deviazione di freeform = 0 per scelta (esportati sfaccettati = esatti); filettature: 0 di default, scarto dal cilindro nominale con l'opzione (1.5.1).
 - Riparazione: buchi e non-manifold; auto-intersezioni solo rilevate (1.5.0).
 - Report PDF su una sola pagina.
 - Exe Windows provato (v1.4.1) ma non «Apri con…»/trascinamento né un PC senza WebView2.
@@ -89,4 +89,4 @@ index.html ── src/app.js (UI, viewer three.js, i18n, editing, export, API in
 - App Windows: da provare «Apri con…»/trascinamento sull'exe e l'avvio su un PC senza runtime WebView2.
 - Pulsante «Converti in STEP»: fatto nel repo 3D STL Multipart Maker v0.6.2-beta (2026-10-07), non provato dalla versione Windows di quel programma.
 - Auto-intersezioni non riparate (solo rilevate).
-- B-spline chiuse solo per superfici «a stella» rispetto a un asse; deviazione per freeform/filettature mancante.
+- B-spline chiuse solo per superfici «a stella» rispetto a un asse.

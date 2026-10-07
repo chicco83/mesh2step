@@ -1,11 +1,12 @@
 /*
  * Mesh2STEP — sw.js (service worker)
- * Versione: 1.5.0 — 2026-10-07 01:03 (Europe/Rome)
+ * Versione: 1.5.1 — 2026-10-07 07:15 (Europe/Rome)
  * Cache "app shell" per l'uso offline: prima la cache, poi aggiornamento in background.
  * Cambiare CACHE a ogni versione per invalidare i file vecchi.
  */
 // [2026-10-07 v1.5.0] const CACHE = 'mesh2step-1.4.1';
-const CACHE = 'mesh2step-1.5.0';
+// [2026-10-07 v1.5.1] const CACHE = 'mesh2step-1.5.0';
+const CACHE = 'mesh2step-1.5.1';
 const FILES = ['./', 'index.html', 'manifest.webmanifest', 'src/app.js', 'src/worker.js', 'src/core.js',
   'vendor/three.module.min.js', 'vendor/OrbitControls.js', 'icons/icon-192.png', 'icons/icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting())); });
