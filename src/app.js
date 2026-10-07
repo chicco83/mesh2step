@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — app.js
- * Versione: 1.5.1 — 2026-10-07 07:15 (Europe/Rome)
+ * Versione: 1.6.0 — 2026-10-07 22:00 (Europe/Rome)
  * Versione precedente archiviata: archive/app_v1.0.1_20261006-1310.js
  * (2026-10-06: riscritta per editing facce, corpi, report CSV, export STL/OBJ, heatmap deviazione,
  *  viste, IT/EN, tema chiaro, condivisione, PWA e API di integrazione).
@@ -12,7 +12,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 // [2026-10-07 v1.5.0] const VERSION = '1.4.1';
 // [2026-10-07 v1.5.1] const VERSION = '1.5.0';
-const VERSION = '1.5.1';
+// [2026-10-07 v1.6.0] const VERSION = '1.5.1';
+const VERSION = '1.6.0';
 const $ = id => document.getElementById(id);
 const store = { get: k => { try { return localStorage.getItem('m2s.' + k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem('m2s.' + k, v); } catch { /* storage non disponibile */ } } };
 

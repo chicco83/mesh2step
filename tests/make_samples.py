@@ -1,5 +1,5 @@
 # Mesh2STEP — tests/make_samples.py
-# Versione: 1.5.0 — 2026-10-07 01:03
+# Versione: 1.6.0 — 2026-10-07 22:00
 # Genera mesh di prova (STL) con geometria nota tramite manifold3d (booleane robuste).
 import sys, os
 import numpy as np
@@ -94,6 +94,11 @@ from manifold3d import CrossSection
 prof = [(0.0, 0.0)] + [(12 + 3.5 * math.sin(2 * math.pi * 1.5 * z / 40), z) for z in np.linspace(0, 40, 61)] + [(0.0, 40.0)]
 vase = Manifold.revolve(CrossSection([prof]), 96).warp(lambda v: (v[0] * 1.3, v[1], v[2]))
 save(vase, 'vase.stl')
+
+# 10-ter) [v1.6.0] Vaso curvo: lo stesso profilo ondulato ma con asse incurvato (x += 0.05 (z-20)^2, fino a 20 mm agli estremi):
+# non e' piu' "a stella" rispetto a un asse dritto (la parete ripida ha normali quasi parallele all'asse) -> tubo lungo una spina curva
+vase_bent = Manifold.revolve(CrossSection([prof]), 96).warp(lambda v: (v[0] + 0.05 * (v[2] - 20) ** 2, v[1], v[2]))
+save(vase_bent, 'vase_bent.stl')
 
 # 11) 3MF con due oggetti nominati e trasformazioni di build (traslazioni)
 def mesh_xml(m, oid, name):

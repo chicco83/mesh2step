@@ -1,5 +1,5 @@
 # CONTEXT — Mesh2STEP
-Versione documento: 1.5.1 — 2026-10-07 07:15
+Versione documento: 1.6.0 — 2026-10-07 22:00
 
 ## Scopo
 Web app che converte mesh triangolari (STL, OBJ, 3MF) in file STEP con **geometria CAD reale**:
@@ -63,6 +63,7 @@ index.html ── src/app.js (UI, viewer three.js, i18n, editing, export, API in
 - Filettature: di default esportate sfaccettate (geometria fedele) con nome faccia `THREAD Mx`. [2026-10-07, v1.4.0] Opzione *cilindro nominale*:
   i vertici del filetto si proiettano **radialmente** su una copia della mesh (i piani ⟂ asse restano piani; le altre regioni toccate
   diventano sfaccettate). Spenta di default perché cambia volume e geometria.
+- [2026-10-07, v1.6.0] Spina curva: polinomio cubico dei baricentri delle fasce (non poligonale: il rumore rovina la parametrizzazione), θ nel piano ⟂ asse (non ⟂ tangente: meno uniforme), controllo di iniettività al posto di «normale radiale»; i tappi piani si staccano in 4-0 (`tryPeeled`).
 - [2026-10-07, v1.5.0] B-spline chiusa: rete periodica in angolo convertita in bloccata (Boehm) perché OpenCASCADE legge un dominio sbagliato con nodi uniformi non bloccati; prima/ultima riga di controllo coincidenti, nessun spigolo di cucitura esplicito (OCC lo ricostruisce: `valid=True`).
 - Regioni chiuse senza bordo: prima sfaccettate (`ADVANCED_FACE` richiede un anello). [2026-10-07, v1.4.0] sfera e toro si dividono con un piano
   per centro/asse in due facce analitiche (emisferi / semi-tubi); altri tipi chiusi restano sfaccettati.
@@ -72,7 +73,7 @@ index.html ── src/app.js (UI, viewer three.js, i18n, editing, export, API in
 - App Windows con WebView2 (stessa scelta di 3D STL Multipart Maker), file web come risorse incorporate. [2026-10-07] I nomi delle risorse si normalizzano (`\` → `/`): `%(RecursiveDir)` dà backslash sui build Windows.
 
 ## Limiti noti v1.4.0
-- B-spline per zone "campo di altezze" e (1.5.0) superfici chiuse a stella; deviazione di freeform = 0 per scelta (esportati sfaccettati = esatti); filettature: 0 di default, scarto dal cilindro nominale con l'opzione (1.5.1).
+- B-spline per zone "campo di altezze" e (1.5.0–1.6.0) superfici chiuse tubolari (spina curva, parametrizzazione (θ, z) iniettiva); deviazione di freeform = 0 per scelta (esportati sfaccettati = esatti); filettature: 0 di default, scarto dal cilindro nominale con l'opzione (1.5.1).
 - Riparazione: buchi e non-manifold; auto-intersezioni solo rilevate (1.5.0).
 - Report PDF su una sola pagina.
 - Exe Windows provato (v1.4.1) ma non «Apri con…»/trascinamento né un PC senza WebView2.
@@ -89,4 +90,4 @@ index.html ── src/app.js (UI, viewer three.js, i18n, editing, export, API in
 - App Windows: da provare «Apri con…»/trascinamento sull'exe e l'avvio su un PC senza runtime WebView2.
 - Pulsante «Converti in STEP»: fatto nel repo 3D STL Multipart Maker v0.6.2-beta (2026-10-07), non provato dalla versione Windows di quel programma.
 - Auto-intersezioni non riparate (solo rilevate).
-- B-spline chiuse solo per superfici «a stella» rispetto a un asse.
+- B-spline chiuse solo per superfici tubolari con parametrizzazione (θ, z) iniettiva (non poli né rientranze).

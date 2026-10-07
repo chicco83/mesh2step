@@ -1,5 +1,22 @@
 # CHANGELOG — Mesh2STEP
-Versione documento: 1.5.1 — 2026-10-07 07:15
+Versione documento: 1.6.0 — 2026-10-07 22:00
+
+## 14. [1.6.0] — 2026-10-07 22:00 — B-spline chiuse anche per tubi incurvati
+- `fitBSplineClosed` non richiede più un asse dritto: la **spina** (centro delle sezioni a z costante) è un polinomio cubico fitto ai
+  baricentri di 24 fasce; θ si misura attorno a `c(z)` nel piano ⟂ asse, il parametro lungo il tubo è l'ascissa curvilinea della spina.
+  Assi candidati: autovettore delle normali e i 3 assi principali dei vertici (con tubi molto incurvati le normali danno un asse sbagliato).
+- Controllo «a stella» sostituito da un test di **iniettività** della parametrizzazione (θ, z): ogni triangolo deve avere area con segno
+  costante nel piano dei parametri (il vecchio «normale ⟂ asse > 0,25» era falso sulle pareti ripide); il segno dà `outward`.
+- Nuova rete massima 24 × 18 (prima 20 × 14).
+- **Tappi piani nella stessa patch** (su una parete ripida il diedro con il tappo è < 25°): nello stadio 4-0, se la patch non si adatta,
+  si tolgono i gruppi complanari > 5% dell'area e si prova la B-spline chiusa sul resto (componente più grande); i tappi restano ai piani.
+- Nuovo campione `vase_bent.stl` (vaso con asse incurvato, fino a 20 mm): **prima 4 104 facce, ora 3** (1 B-spline chiusa 24 × 18 + 2 piani),
+  `valid=True`, volume 21105,66 (mesh 21082,44; +0,11% = errore di fit 0,017 mm × area).
+- `vase.stl`: volume 27419,14 (era 27409,90; mesh 27407,17): stessa topologia, fit leggermente diverso con la nuova parametrizzazione.
+- Provato e scartato (lasciato nel codice commentato): riferimento trasportato lungo la tangente della spina (θ nel piano ⟂ T) — parametrizzazione
+  troppo non uniforme, 0,045 mm anche con 24 × 26; spina poligonale dei baricentri — il rumore dava 0,18 mm sul vaso dritto.
+- Ancora sfaccettati: gusci chiusi con poli o rientranze (non iniettivi in θ, z), superfici chiuse in entrambe le direzioni (genus ≥ 1 organico).
+- Rollback: `git revert` del commit; i tubi dritti tornano al comportamento 1.5.x, quelli curvi a sfaccettati.
 
 ## 13. [1.5.1] — 2026-10-07 07:15 — Deviazione dei filetti dal cilindro nominale
 - `deviation` restituisce anche `devThr`/`maxThr`: come `dev`, ma i triangoli del **filetto** sono confrontati con il cilindro nominale

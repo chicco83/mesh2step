@@ -1,5 +1,5 @@
 # MIGLIORIE — Mesh2STEP
-Versione documento: 1.5.1 — 2026-10-07 07:15
+Versione documento: 1.6.0 — 2026-10-07 22:00
 <!-- [2026-10-06 13:45] versione precedente 1.0.0 (2026-10-05 17:10): elenco proposte tutte "da fare";
      aggiornato con lo stato di realizzazione. -->
 
@@ -12,7 +12,7 @@ Stato: ✅ fatto · 🟡 parziale · ⏸️ valutato e rinviato.
 | 2 | Tori (raccordi su spigoli circolari) | ✅ | 1.1.0 | `TOROIDAL_SURFACE`; toro completo chiuso esportato sfaccettato |
 | 3 | Snap ai valori nominali | ✅ | 1.1.0 | Opzione "Arrotonda a valori nominali" |
 | 4 | Filettature | ✅ | 1.4.0 | Riconoscimento, M-size ISO, passo, senso, report e nome faccia; opzione STEP *Filettature come cilindro nominale* (default spenta, proiezione radiale su copia della mesh). Residui d'uscita assorbiti nel filetto |
-| 5 | Freeform → NURBS | 🟡 | 1.5.0 | B-spline bicubiche per zone «campo di altezze» (1.1.0) **e superfici chiuse a stella rispetto a un asse** (periodiche in angolo, 1.5.0, `vase.stl`: 3 facce). Restano sfaccettati: gusci chiusi non a stella (poli, rientranze), regioni non connesse. Sfera/toro completi: ✅ 1.4.0 |
+| 5 | Freeform → NURBS | 🟡 | 1.6.0 | B-spline bicubiche per zone «campo di altezze» (1.1.0), per superfici chiuse tubo/vaso anche **lungo una spina curva** (periodiche in angolo, 1.5.0–1.6.0, `vase.stl`, `vase_bent.stl`: 3 facce). Restano sfaccettati: gusci con poli o rientranze, superfici chiuse in due direzioni, regioni non connesse. Sfera/toro completi: ✅ 1.4.0 |
 | 6 | Conversione/unione facce manuale | ✅ | 1.2.0 | Con annulla a 20 livelli |
 | 7 | Selezione e rinomina corpi | ✅ | 1.2.0 | Nomi anche da 3MF/OBJ/STL |
 | 8 | Riparazione mesh | 🟡 | 1.5.0 | Chiusura buchi (anche annidati) e **spigoli non-manifold** (duplicati, schiena-a-schiena, alette). **Auto-intersezioni: rilevate e segnalate (1.5.0), non riparate** (servono booleane robuste: scelta di non implementarle nel browser senza una libreria) |
@@ -32,6 +32,6 @@ Stato: ✅ fatto · 🟡 parziale · ⏸️ valutato e rinviato.
 1. ~~Provare l'exe Windows~~ ✅ 2026-10-07 (trovato e corretto il bug delle risorse in sottocartelle). Restano: «Apri con…»/trascinamento, PC senza WebView2.
 2. ~~Pulsante «Converti in STEP»~~ ✅ 2026-10-07 nel repo 3d-stl-multipart-maker v0.6.2-beta (pannello Esporta; `postMessage`). Non provato sulla versione Windows.
 3. ~~Auto-intersezioni: rilevamento~~ ✅ rilevamento 1.5.0 (avviso + test); riparazione rinviata (booleane robuste).
-4. ~~B-spline per superfici che si richiudono~~ ✅ 1.5.0 (superfici a stella rispetto a un asse). Restano gusci chiusi non a stella.
+4. ~~B-spline per superfici che si richiudono~~ ✅ 1.5.0 (asse dritto) e 1.6.0 (spina curva). Restano gusci con poli/rientranze.
 5. ~~Deviazione per freeform e filettature~~ ✅ filettature 1.5.1; freeform volutamente 0 (esatti).
 6. Report PDF su più pagine quando i fori superano ~28 righe.

@@ -1,5 +1,5 @@
 # Mesh2STEP
-Versione: 1.5.1 — 2026-10-07 07:15
+Versione: 1.6.0 — 2026-10-07 22:00
 <!-- [2026-10-06 13:45] Versione precedente 1.0.1 (2026-10-06 13:10): README delle funzioni v1.0
      (piani, cilindri, sfere); aggiornato con tutte le funzioni v1.1–v1.3. -->
 
@@ -53,7 +53,7 @@ Gira interamente nel browser, anche offline: **i file non vengono caricati da ne
 | **Sfera** | Fit algebrico + Gauss-Newton, ri-crescita iterativa | Centro, raggio |
 | **Toro** | Seme a doppia curvatura, fit Levenberg-Marquardt a 7 parametri | R, r, asse |
 | **Filettatura** | Test dell'elica sulle creste, passi ISO, tabella metrica grosso/fine | **M-size**, passo, senso, interna/esterna, Ø esterno e nocciolo |
-| **B-spline** | Bicubica 6–12 punti di controllo per lato su zone lisce senza primitive; **chiusa** (periodica in angolo, fino a 20 × 14) per tubi/vasi lisci che si richiudono su un asse | Griglia di controllo |
+| **B-spline** | Bicubica 6–12 punti di controllo per lato su zone lisce senza primitive; **chiusa** (periodica in angolo, fino a 24 × 18, anche lungo una spina incurvata) per tubi/vasi lisci che si richiudono | Griglia di controllo |
 | **Freeform** | Zone residue | Triangoli piani |
 
 Controlli di qualità: ordine degli stadi pensato per evitare falsi positivi (strisce di sfere, coni, tori ed eliche
@@ -150,7 +150,8 @@ STEP generati e riletti con **OpenCASCADE** (kernel di FreeCAD), tutti `valid=Tr
 | Vite M6×1 su testa Ø10 | 54 972 | 3 piani + 1 cilindro + filettatura **M6** destra (con l'opzione: 3 piani + 2 cilindri) | 756,24 mm³ (820,58 con cilindro nominale) |
 | Sfera R10 / toro R20-r5 completi | 2 048 / 2 304 | 2 facce sferiche / 2 facce toroidali | 4188,79 / 9869,60 mm³ (esatti) |
 | Piastra con bombatura liscia | 6 912 | 5 piani + 1 B-spline | 8799,84 mm³ |
-| Vaso ondulato (sezioni ellittiche) | 11 712 | 2 piani + 1 B-spline chiusa | 27409,90 mm³ |
+| Vaso ondulato (sezioni ellittiche) | 11 712 | 2 piani + 1 B-spline chiusa | 27419,14 mm³ |
+| Vaso ondulato con asse incurvato | 11 712 | 2 piani + 1 B-spline chiusa | 21105,66 mm³ |
 | Blocco 2 fori Ø6 + tasca | 420 | 11 piani + 2 cilindri passanti | 32351,77 mm³ |
 | Stesso blocco aperto → *Chiudi i buchi* | 310 | 11 piani + 2 cilindri | 32351,77 mm³ |
 | Piastra con 4 raccordi R5 e foro Ø8 | 464 | 6 piani + 5 cilindri | 11426,19 mm³ |
@@ -188,7 +189,7 @@ Regole di versioning, documentazione e git: [CLAUDE.md](CLAUDE.md).
 
 ## Limiti noti
 - Filettature: di default esportate sfaccettate (faccia `THREAD M…`); il cilindro nominale è un'opzione.
-- B-spline per zone tipo "campo di altezze" e per superfici chiuse «a stella» rispetto a un asse; gusci chiusi più complessi restano sfaccettati.
+- B-spline per zone tipo "campo di altezze" e per superfici chiuse tubolari (anche incurvate); gusci con poli o rientranze restano sfaccettati.
 - Riparazione: buchi e spigoli non-manifold; auto-intersezioni solo **rilevate**.
 - Report PDF: una sola pagina (righe oltre ~28 troncate).
 - App Windows provata su Windows 11 (avvio, file da argomento, export); non ancora «Apri con…»/trascinamento né un PC senza WebView2.

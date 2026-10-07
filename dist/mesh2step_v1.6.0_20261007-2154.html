@@ -5,7 +5,7 @@
   Versione precedente archiviata: archive/index_v1.0.1_20261006-1310.html
   (2026-10-06: nuova UI con editing facce, corpi, report, export STL/OBJ, deviazione, viste, IT/EN,
    tema chiaro, PWA offline con three.js locale in vendor/).
-  Build portabile single-file 20261007-0714: completamente offline (three.js incorporato).
+  Build portabile single-file 20261007-2154: completamente offline (three.js incorporato).
 -->
 <html lang="it">
 <head>
@@ -224,7 +224,7 @@
 
 <script id="worker-src" type="text/plain">/*
  * Mesh2STEP — core.js
- * Versione: 1.5.1 — 2026-10-07 07:15 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
+ * Versione: 1.6.0 — 2026-10-07 22:00 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
  * ---------------------------------------------------------------------------
  * Motore indipendente dalla UI (gira nel Web Worker del browser e in Node per i test).
  *   1. Parsing  : STL (binario/ASCII), OBJ, 3MF (zip letto a mano + DecompressionStream)
@@ -238,7 +238,8 @@
   'use strict';
   // [2026-10-07 v1.5.0] const VERSION = '1.4.1';
   // [2026-10-07 v1.5.1] const VERSION = '1.5.0';
-  const VERSION = '1.5.1';
+  // [2026-10-07 v1.6.0] const VERSION = '1.5.1';
+  const VERSION = '1.6.0';
 
   // ===================== Helper vettoriali (array [x,y,z]) =====================
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -663,12 +664,26 @@
         // area del più grande gruppo complanare (normali entro 0,5°)
         const inP = new Set(patch), cl = new Uint8Array(nT); let tot = 0, big = 0;
         for (const t of patch) tot += M.A[t];
+        const clusters = [];   // [v1.6.0] gruppi complanari (triangoli, area): servono a staccare i tappi piani da un tubo
         for (const t of patch) {
-          if (cl[t]) continue; let a = 0; const st = [t]; cl[t] = 1;
-          while (st.length) { const x = st.pop(); a += M.A[x]; for (let j = 0; j < 3; j++) { const u = M.nb[3 * x + j]; if (u >= 0 && inP.has(u) && !cl[u] && dot(Nv(u), Nv(t)) > Math.cos(0.5 * Math.PI / 180)) { cl[u] = 1; st.push(u); } } }
-          big = Math.max(big, a);
+          if (cl[t]) continue; let a = 0; const st = [t], grp = [t]; cl[t] = 1;
+          while (st.length) { const x = st.pop(); a += M.A[x]; for (let j = 0; j < 3; j++) { const u = M.nb[3 * x + j]; if (u >= 0 && inP.has(u) && !cl[u] && dot(Nv(u), Nv(t)) > Math.cos(0.5 * Math.PI / 180)) { cl[u] = 1; st.push(u); grp.push(u); } } }
+          big = Math.max(big, a); clusters.push({ a, grp });
         }
-        if (big > 0.15 * tot) continue;
+        // [v1.6.0] tubo chiuso con tappi piani nella stessa patch (diedro < 25° su una parete ripida): si tolgono i grandi gruppi
+        // complanari (> 5% dell'area) e si prova la B-spline chiusa sul resto (componente connessa più grande)
+        const tryPeeled = () => {
+          const flat = new Set(); for (const k of clusters) if (k.a > 0.05 * tot) for (const t of k.grp) flat.add(t);
+          if (!flat.size) return null;
+          const rest = patch.filter(t => !flat.has(t)), inR = new Set(rest), seen = new Set(); let bestC = [];
+          for (const t0 of rest) { if (seen.has(t0)) continue; const comp = [t0], stc = [t0]; seen.add(t0); while (stc.length) { const x = stc.pop(); for (let j = 0; j < 3; j++) { const u = M.nb[3 * x + j]; if (u >= 0 && inR.has(u) && !seen.has(u)) { seen.add(u); comp.push(u); stc.push(u); } } } if (comp.length > bestC.length) bestC = comp; }
+          if (bestC.length < 200) return null;
+          const Bc = fitBSplineClosed(M, bestC, tol); return Bc && { B: Bc, tris: bestC };
+        };
+        if (big > 0.15 * tot) {   // [2026-10-07 v1.6.0] prima: if (big > 0.15 * tot) continue;
+          const pe = tryPeeled(); if (!pe) continue;
+          const id = regions.length; regions.push(Object.assign({ id, type: 'bspline', tris: pe.tris }, bsFields(pe.B))); for (const t of pe.tris) face[t] = id; continue;
+        }
         // se una primitiva descrive tutta la patch, la lasciamo agli stadi successivi
         const pv = verticesOf(M, patch);
         const sp = fitSphere(pv); if (sp && sp.maxErr <= tol) continue;
@@ -676,7 +691,11 @@
         const cn = fitCone(M, patch); if (cn && cn.maxErr <= tol) continue;
         const T = fitTorus(M, patch); if (T && T.maxErr <= tol) continue;
         // [v1.5.0] prima: const B = fitBSpline(M, patch, tol); if (!B) continue; regions.push({ id, type: 'bspline', tris: patch, nc: B.nc, cp: B.cp, segs: B.segs, err: B.maxErr, normal: B.normal, dist: B.dist });
-        const B = fitBSplineAny(M, patch, tol); if (!B) continue;
+        const B = fitBSplineAny(M, patch, tol);
+        if (!B) {   // [v1.6.0] riprovo staccando i tappi piani
+          const pe = tryPeeled(); if (!pe) continue;
+          const id = regions.length; regions.push(Object.assign({ id, type: 'bspline', tris: pe.tris }, bsFields(pe.B))); for (const t of pe.tris) face[t] = id; continue;
+        }
         const id = regions.length;
         regions.push(Object.assign({ id, type: 'bspline', tris: patch }, bsFields(B)));
         for (const t of patch) face[t] = id;
@@ -1360,26 +1379,69 @@
   function fitBSplineClosed(M, tris, tol) {
     const pts = verticesOf(M, tris); if (pts.length < 64 || tris.length < 64) return null;
     const ax = axisFromNormals(M, tris); if (!ax || !ax[0]) return null;
-    const a = norm(ax[0].vec);
     let org = [0, 0, 0]; for (const p of pts) org = add(org, p); org = mul(org, 1 / pts.length);
-    const e1 = perp(a), e2 = cross(a, e1);
-    // a stella rispetto all'asse: la normale di ogni triangolo ha componente radiale non trascurabile e sempre dello stesso segno
-    let pos = 0, neg = 0;
-    for (const t of tris) {
-      const d = sub([M.C[3 * t], M.C[3 * t + 1], M.C[3 * t + 2]], org), rd = sub(d, mul(a, dot(d, a))), l = len(rd); if (l < 1e-9) return null;
-      const nr = dot([M.N[3 * t], M.N[3 * t + 1], M.N[3 * t + 2]], mul(rd, 1 / l));
-      if (nr > 0.25) pos++; else if (nr < -0.25) neg++; else return null;
-    }
-    if (pos && neg) return null;
-    const outward = pos > 0;
-    const th = [], zz = []; let z0 = Infinity, z1 = -Infinity;
-    for (const p of pts) { const d = sub(p, org), z = dot(d, a); th.push(Math.atan2(dot(d, e2), dot(d, e1))); zz.push(z); if (z < z0) z0 = z; if (z > z1) z1 = z; }
-    if (!(z1 - z0 > 1e-6)) return null;
-    { // la copertura angolare deve essere completa (nessun vuoto > 90°)
-      const s = th.slice().sort((x, y) => x - y); let gap = s[0] + 2 * Math.PI - s[s.length - 1];
-      for (let i = 1; i < s.length; i++) gap = Math.max(gap, s[i] - s[i - 1]);
-      if (gap > Math.PI / 2) return null;
-    }
+    // [v1.6.0] asse candidato: autovettore delle normali (vale per i tubi dritti) e assi principali dei vertici (tubi molto incurvati,
+    // dove le normali indicano un asse sbagliato); si usa il primo per cui spina, copertura angolare e componente radiale sono validi.
+    // [2026-10-07 v1.6.0] prima: un solo asse, quello delle normali
+    const setup = a => {
+      // [v1.6.0] SPINA: asse non più dritto. Si taglia in 24 fasce lungo a, il baricentro di ogni fascia dà la spina (lisciata), la
+      // tangente T e un riferimento (e1, e2) trasportato senza torsione; θ si misura nel piano ⟂ T alla quota del punto.
+      // Per un asse dritto la spina coincide con l'asse e il risultato è quello della 1.5.0.
+      // [2026-10-07 v1.6.0] prima: const e1 = perp(a), e2 = cross(a, e1);  (θ attorno a un asse fisso)
+      let z0 = Infinity, z1 = -Infinity;
+      for (const p of pts) { const z = dot(sub(p, org), a); if (z < z0) z0 = z; if (z > z1) z1 = z; }
+      if (!(z1 - z0 > 1e-6)) return null;
+      const NB = 24, sp = [...Array(NB)].map(() => ({ n: 0, p: [0, 0, 0], z: 0 }));
+      for (const p of pts) { const z = dot(sub(p, org), a), b = sp[Math.min(NB - 1, Math.floor((z - z0) / (z1 - z0) * NB))]; b.n++; b.p = add(b.p, p); b.z += z; }
+      if (sp.some(b => !b.n)) return null;
+      const spZ = sp.map(b => b.z / b.n), spP = sp.map(b => mul(b.p, 1 / b.n));
+      // spina = polinomio cubico in z fitto ai baricentri delle fasce (liscio: una spina spezzata introduce errori di parametrizzazione di ~0,1 mm)
+      // [2026-10-07 v1.6.0] prima (provato e scartato): spina poligonale dei baricentri, lisciata a mano -> errore 0,18 mm sul vaso dritto
+      const zc = (z0 + z1) / 2, zh = (z1 - z0) / 2, pw = z => { const s = (z - zc) / zh; return [1, s, s * s, s * s * s]; };
+      const coef = [0, 1, 2].map(k => {
+        const A = [...Array(4)].map(() => Array(4).fill(0)), bb = Array(4).fill(0);
+        sp.forEach((b, i) => { const w = pw(spZ[i]); for (let r = 0; r < 4; r++) { bb[r] += b.n * w[r] * spP[i][k]; for (let q = 0; q < 4; q++) A[r][q] += b.n * w[r] * w[q]; } });
+        return solve(A, bb);
+      });
+      if (coef.some(x => !x)) return null;
+      const polyC = z => { const w = pw(z); return coef.map(cf => cf[0] * w[0] + cf[1] * w[1] + cf[2] * w[2] + cf[3] * w[3]); };
+      const polyT = z => { const s = (z - zc) / zh; return norm(coef.map(cf => cf[1] + 2 * cf[2] * s + 3 * cf[3] * s * s)); };
+      const spC = spZ.map(polyC), spT = spZ.map(polyT);
+      // [v1.6.0] parametro lungo la spina = ascissa curvilinea normalizzata (con spina inclinata un passo in z non è un passo di superficie)
+      // [2026-10-07 v1.6.0] prima: v = (z - z0) / (z1 - z0)
+      const NS = 128, sTab = [0]; for (let i = 1; i <= NS; i++) sTab.push(sTab[i - 1] + len(sub(polyC(z0 + (z1 - z0) * i / NS), polyC(z0 + (z1 - z0) * (i - 1) / NS))));
+      const tv = z => { const x = Math.min(NS - 1e-9, Math.max(0, (z - z0) / (z1 - z0) * NS)), k = Math.floor(x); return (sTab[k] + (sTab[k + 1] - sTab[k]) * (x - k)) / sTab[NS]; };
+      // [v1.6.0] θ si misura nel piano ⟂ a (sezione a z costante) attorno al punto della spina c(z): uniforme anche con spina molto inclinata.
+      // [2026-10-07 v1.6.0] prima (provato e scartato): riferimento (e1, e2) trasportato lungo la tangente T della spina, θ nel piano ⟂ T:
+      // parametrizzazione molto non uniforme su tubi incurvati (nu 24 × nv 26 non bastava: 0,045 mm)
+      const e1 = perp(a), e2 = cross(a, e1);
+      const param = p => { const z = dot(sub(p, org), a), d = sub(p, polyC(z)); return [Math.atan2(dot(d, e2), dot(d, e1)), z]; };
+      // iniettività della parametrizzazione (θ, z): ogni triangolo deve avere area con segno costante nel piano dei parametri
+      // (sostituisce il controllo «normale ⟂ asse», falso su pareti ripide); segno positivo = normali verso l'esterno
+      let pos = 0, neg = 0;
+      for (const t of tris) {
+        const q = [0, 1, 2].map(k => param(M.P(M.T[3 * t + k]))), wrap = x => x - 2 * Math.PI * Math.round(x / (2 * Math.PI));
+        const du1 = wrap(q[1][0] - q[0][0]), du2 = wrap(q[2][0] - q[0][0]), dz1 = q[1][1] - q[0][1], dz2 = q[2][1] - q[0][1], ar = 0.5 * (du1 * dz2 - du2 * dz1);
+        if (ar > 1e-7) pos++; else if (ar < -1e-7) neg++;
+      }
+      if (pos && neg) return null;
+      if (!pos && !neg) return null;
+      const outward = pos > 0;
+      const th = [], zz = [];
+      for (const p of pts) { const [t_, z] = param(p); th.push(t_); zz.push(z); }   // [v1.6.0] prima: θ attorno all'asse fisso, z0/z1 calcolati qui
+      { // la copertura angolare deve essere completa (nessun vuoto > 90°)
+        const s = th.slice().sort((x, y) => x - y); let gap = s[0] + 2 * Math.PI - s[s.length - 1];
+        for (let i = 1; i < s.length; i++) gap = Math.max(gap, s[i] - s[i - 1]);
+        if (gap > Math.PI / 2) return null;
+      }
+      return { a, z0, z1, param, th, zz, outward, tv };
+    };
+    const cov = [0, 0, 0, 0, 0, 0]; for (const p of pts) { const d = sub(p, org); cov[0] += d[0] * d[0]; cov[1] += d[0] * d[1]; cov[2] += d[0] * d[2]; cov[3] += d[1] * d[1]; cov[4] += d[1] * d[2]; cov[5] += d[2] * d[2]; }
+    const cands = [norm(ax[0].vec)].concat(eigSym3(cov).map(e => norm(e.vec)));
+    let S = null;
+    for (const cd of cands) { for (const sg of [1, -1]) { S = setup(mul(cd, sg)); if (S) break; } if (S) break; }
+    if (!S) return null;
+    const { a, z0, z1, param, th, zz, outward, tv } = S;
     // basi: periodica uniforme in u (t in [0,nu)), bloccata uniforme in v
     const bu = (nu, t) => { const k = Math.floor(t), s = t - k, w = [(1 - s) ** 3 / 6, (3 * s ** 3 - 6 * s * s + 4) / 6, (-3 * s ** 3 + 3 * s * s + 3 * s + 1) / 6, s ** 3 / 6]; return w.map((x, m) => [((k + m) % nu + nu) % nu, x]); };
     const bv = (nv, t) => {
@@ -1388,8 +1450,8 @@
       for (let p = 1; p <= 3; p++) { const nx = []; for (let i = 0; i < kn.length - 1 - p; i++) { const d1 = kn[i + p] - kn[i], d2 = kn[i + p + 1] - kn[i + 1]; nx.push((d1 > 0 ? (x - kn[i]) / d1 * Nk[i] : 0) + (d2 > 0 ? (kn[i + p + 1] - x) / d2 * Nk[i + 1] : 0)); } Nk = nx; }
       const o = []; for (let i = 0; i < nv; i++) if (Nk[i]) o.push([i, Nk[i]]); return o;
     };
-    const tU = (nu, th_) => ((th_ + Math.PI) / (2 * Math.PI) * nu) % nu, tV = z => (z - z0) / (z1 - z0);
-    for (const [nu, nv] of [[8, 6], [12, 8], [16, 10], [20, 14]]) {
+    const tU = (nu, th_) => ((th_ + Math.PI) / (2 * Math.PI) * nu) % nu, tV = tv;   // [v1.6.0] prima: z => (z - z0) / (z1 - z0)
+    for (const [nu, nv] of [[8, 6], [12, 8], [16, 10], [20, 14], [24, 18]]) {
       const K = nu * nv, A = [...Array(K)].map(() => new Float64Array(K)), b = [new Float64Array(K), new Float64Array(K), new Float64Array(K)];
       const rows = pts.map((p, i) => ({ U: bu(nu, tU(nu, th[i])), V: bv(nv, tV(zz[i])), p }));
       for (const { U, V, p } of rows) {
@@ -1425,7 +1487,7 @@
       for (let r = 0; r < 3; r++) insert(nu + 3);
       ctrl = ctrl.slice(3, ctrl.length - 3);
       // dist: scarto di un punto dalla superficie ai suoi parametri (θ, z)
-      const dist = p => { const d = sub(p, org); return len(sub(evalS(Math.atan2(dot(d, e2), dot(d, e1)), dot(d, a)), p)); };
+      const dist = p => { const [t_, z] = param(p); return len(sub(evalS(t_, z), p)); };   // [v1.6.0] prima: θ attorno all'asse fisso
       return { nc: nu, nv, cp: ctrl, segs: nu, segsV: nv - 3, maxErr: mx, normal: a, dist, closedU: true, outward };
     }
     return null;
@@ -2167,7 +2229,7 @@
     return { M, seg };
   }
 
-  const API = { VERSION, parseFile, parseSTL, parseOBJ, parse3MF, buildMesh, segment, exportSTEP, analyse, fitCylinder, fitSphere, fitPlane, fitCone, fitTorus, fitBSpline, detectThread, threadsToCylinders, fixNonManifold, findSelfIntersections, reportPdf, fillHoles, features, deviation, surfDist, editRegions, regionStats };
+  const API = { VERSION, parseFile, parseSTL, parseOBJ, parse3MF, buildMesh, segment, exportSTEP, analyse, fitCylinder, fitSphere, fitPlane, fitCone, fitTorus, fitBSpline, detectThread, threadsToCylinders, fixNonManifold, findSelfIntersections, fitBSplineClosed, reportPdf, fillHoles, features, deviation, surfDist, editRegions, regionStats };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   else root.M2S = API;
 })(typeof self !== 'undefined' ? self : this);
@@ -3840,7 +3902,7 @@ export { OrbitControls };
 </script>
 <script id="app-src" type="text/plain">/*
  * Mesh2STEP — app.js
- * Versione: 1.5.1 — 2026-10-07 07:15 (Europe/Rome)
+ * Versione: 1.6.0 — 2026-10-07 22:00 (Europe/Rome)
  * Versione precedente archiviata: archive/app_v1.0.1_20261006-1310.js
  * (2026-10-06: riscritta per editing facce, corpi, report CSV, export STL/OBJ, heatmap deviazione,
  *  viste, IT/EN, tema chiaro, condivisione, PWA e API di integrazione).
@@ -3852,7 +3914,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 // [2026-10-07 v1.5.0] const VERSION = '1.4.1';
 // [2026-10-07 v1.5.1] const VERSION = '1.5.0';
-const VERSION = '1.5.1';
+// [2026-10-07 v1.6.0] const VERSION = '1.5.1';
+const VERSION = '1.6.0';
 const $ = id => document.getElementById(id);
 const store = { get: k => { try { return localStorage.getItem('m2s.' + k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem('m2s.' + k, v); } catch { /* storage non disponibile */ } } };
 
