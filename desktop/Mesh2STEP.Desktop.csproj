@@ -1,6 +1,6 @@
 <!--
   Mesh2STEP Desktop — Mesh2STEP.Desktop.csproj
-  Versione: 1.6.0 — 2026-10-07 22:00 (Europe/Rome)
+  Versione: 1.7.0 — 2026-10-07 22:10 (Europe/Rome)
   App Windows portabile: finestra nativa WebView2 che incorpora l'app web (wwwroot come risorse).
   Build: vedi build-desktop.ps1 / build-desktop.sh o la GitHub Action "desktop".
 -->
@@ -13,7 +13,7 @@
     <Nullable>disable</Nullable>
     <AssemblyName>Mesh2STEP</AssemblyName>
     <RootNamespace>Mesh2Step.Desktop</RootNamespace>
-    <Version>1.6.0</Version>
+    <Version>1.7.0</Version>
     <ApplicationIcon>mesh2step.ico</ApplicationIcon>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>

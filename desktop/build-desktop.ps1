@@ -12,7 +12,8 @@ if (Test-Path wwwroot) { Remove-Item wwwroot -Recurse -Force }
 New-Item -ItemType Directory -Force wwwroot\src, wwwroot\vendor, wwwroot\icons | Out-Null
 Copy-Item ..\index.html, ..\manifest.webmanifest wwwroot\
 Copy-Item ..\src\app.js, ..\src\worker.js, ..\src\core.js wwwroot\src\
-Copy-Item ..\vendor\three.module.min.js, ..\vendor\OrbitControls.js wwwroot\vendor\
+# [2026-10-07 v1.7.0] prima: solo three.module.min.js e OrbitControls.js (manifold-3d serve a «Ripara auto-intersezioni»)
+Copy-Item ..\vendor\three.module.min.js, ..\vendor\OrbitControls.js, ..\vendor\manifold.js, ..\vendor\manifold.wasm wwwroot\vendor\
 Copy-Item ..\icons\*.png wwwroot\icons\
 dotnet publish -c Release -o publish
 New-Item -ItemType Directory -Force out | Out-Null

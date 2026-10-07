@@ -1,5 +1,5 @@
 # CONTEXT — Mesh2STEP
-Versione documento: 1.6.0 — 2026-10-07 22:00
+Versione documento: 1.7.0 — 2026-10-07 22:10
 
 ## Scopo
 Web app che converte mesh triangolari (STL, OBJ, 3MF) in file STEP con **geometria CAD reale**:
@@ -63,18 +63,19 @@ index.html ── src/app.js (UI, viewer three.js, i18n, editing, export, API in
 - Filettature: di default esportate sfaccettate (geometria fedele) con nome faccia `THREAD Mx`. [2026-10-07, v1.4.0] Opzione *cilindro nominale*:
   i vertici del filetto si proiettano **radialmente** su una copia della mesh (i piani ⟂ asse restano piani; le altre regioni toccate
   diventano sfaccettate). Spenta di default perché cambia volume e geometria.
+- [2026-10-07, v1.7.0] Riparazione auto-intersezioni con **manifold-3d in `vendor/`** (Apache-2.0, WebAssembly, caricato con `import()` dinamico nel Worker classico alla prima richiesta). Scelta: una booleana scritta a mano non sarebbe robusta; la libreria è locale, quindi nessuna dipendenza di rete. Il core riceve il modulo per iniezione (resta senza DOM e senza import). In `dist` il modulo e il wasm sono incorporati nel Worker; `locateFile` fittizio perché `new URL(..., import.meta.url)` non è valido in un modulo blob.
 - [2026-10-07, v1.6.0] Spina curva: polinomio cubico dei baricentri delle fasce (non poligonale: il rumore rovina la parametrizzazione), θ nel piano ⟂ asse (non ⟂ tangente: meno uniforme), controllo di iniettività al posto di «normale radiale»; i tappi piani si staccano in 4-0 (`tryPeeled`).
 - [2026-10-07, v1.5.0] B-spline chiusa: rete periodica in angolo convertita in bloccata (Boehm) perché OpenCASCADE legge un dominio sbagliato con nodi uniformi non bloccati; prima/ultima riga di controllo coincidenti, nessun spigolo di cucitura esplicito (OCC lo ricostruisce: `valid=True`).
 - Regioni chiuse senza bordo: prima sfaccettate (`ADVANCED_FACE` richiede un anello). [2026-10-07, v1.4.0] sfera e toro si dividono con un piano
   per centro/asse in due facce analitiche (emisferi / semi-tubi); altri tipi chiusi restano sfaccettati.
-- **Non** fatto, di proposito: riparazione delle auto-intersezioni (richiede booleane robuste; dalla 1.5.0 si **rilevano** e si segnalano); filettatura che sostituisce il cilindro
+- **Non** fatto, di proposito: riparazione di auto-intersezioni DENTRO un guscio (dalla 1.5.0 si rilevano, dalla 1.7.0 si riparano solo quelle tra corpi, unendoli); filettatura che sostituisce il cilindro
   nello STEP senza opzione (cambierebbe il volume senza che l'utente lo scelga).
 - Editing manuale: le regioni unite devono essere contigue (una faccia = una zona connessa).
 - App Windows con WebView2 (stessa scelta di 3D STL Multipart Maker), file web come risorse incorporate. [2026-10-07] I nomi delle risorse si normalizzano (`\` → `/`): `%(RecursiveDir)` dà backslash sui build Windows.
 
 ## Limiti noti v1.4.0
 - B-spline per zone "campo di altezze" e (1.5.0–1.6.0) superfici chiuse tubolari (spina curva, parametrizzazione (θ, z) iniettiva); deviazione di freeform = 0 per scelta (esportati sfaccettati = esatti); filettature: 0 di default, scarto dal cilindro nominale con l'opzione (1.5.1).
-- Riparazione: buchi e non-manifold; auto-intersezioni solo rilevate (1.5.0).
+- Riparazione: buchi, non-manifold, auto-intersezioni tra corpi (unione con manifold-3d, 1.7.0); non quelle dentro un solo guscio.
 - Report PDF su una sola pagina.
 - Exe Windows provato (v1.4.1) ma non «Apri con…»/trascinamento né un PC senza WebView2.
 
@@ -89,5 +90,5 @@ index.html ── src/app.js (UI, viewer three.js, i18n, editing, export, API in
 ## Problemi aperti
 - App Windows: da provare «Apri con…»/trascinamento sull'exe e l'avvio su un PC senza runtime WebView2.
 - Pulsante «Converti in STEP»: fatto nel repo 3D STL Multipart Maker v0.6.2-beta (2026-10-07), non provato dalla versione Windows di quel programma.
-- Auto-intersezioni non riparate (solo rilevate).
+- Auto-intersezioni dentro un solo guscio non riparate (tra corpi sì, 1.7.0).
 - B-spline chiuse solo per superfici tubolari con parametrizzazione (θ, z) iniettiva (non poli né rientranze).

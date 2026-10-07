@@ -1,5 +1,5 @@
 # MANUALE — Mesh2STEP
-Versione documento: 1.6.0 — 2026-10-07 22:00
+Versione documento: 1.7.0 — 2026-10-07 22:10
 <!-- [2026-10-06 13:45] versione precedente 1.0.0 (2026-10-05 17:10) nel repository git (commit 729f9ed). -->
 
 ## 1. Avvio
@@ -73,7 +73,7 @@ nominale ISO; interno: fondo del foro) con nome faccia `THREAD Mx`. Il volume ca
 
 **Ripara**: compare con buchi o spigoli non-manifold; rimuove duplicati/alette, poi chiude i buchi.
 
-**Auto-intersezioni**: se la mesh si taglia da sola compare la riga *Auto-intersezioni* (coppie di triangoli) e un avviso: volume e riconoscimento possono essere inaffidabili. Non vengono riparate: correggi il modello nel programma d'origine (unione booleana). Il controllo ha un limite di 4 s sulle mesh molto grandi (il numero è allora seguito da «+»).
+**Auto-intersezioni**: se la mesh si taglia da sola compare la riga *Auto-intersezioni* (coppie di triangoli), un avviso e il pulsante **Ripara auto-intersezioni (unisci i corpi)**. Il pulsante unisce con una booleana robusta i corpi chiusi che si sovrappongono (un perno che attraversa una piastra diventa un solo solido) e controlla il risultato; i corpi aperti restano com'erano (usa prima *Chiudi i buchi*). Se resta qualche intersezione (guscio ripiegato su se stesso) la mesh non viene toccata e compare un avviso. I nomi dei corpi uniti si perdono. Il controllo ha un limite di 4 s sulle mesh molto grandi (il numero è allora seguito da «+»).
 
 ## 8. Navigazione e interfaccia
 Trascina = ruota · rotella/pizzica = zoom · tasto destro o Shift+trascina = sposta · **F** = adatta.

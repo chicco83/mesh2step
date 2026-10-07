@@ -1,5 +1,5 @@
 // Mesh2STEP — build.mjs
-// Versione: 1.3.0 — 2026-10-06 13:40 (Europe/Rome)
+// Versione: 1.7.0 — 2026-10-07 22:10 (Europe/Rome)
 // Versione precedente archiviata: archive/build_v1.0.0_20261005-1710.mjs
 // (2026-10-06: build completamente offline: three.js e OrbitControls incorporati come moduli Blob).
 //
@@ -11,6 +11,8 @@ const stamp = process.env.BUILD_STAMP || new Date().toLocaleString('sv-SE', { ti
 const esc = s => s.replace(/<\/script/gi, '<\\/script');
 const rd = f => fs.readFileSync(f, 'utf8');
 const core = rd('src/core.js'), worker = rd('src/worker.js'), app = rd('src/app.js');
+// [v1.7.0] manifold-3d (riparazione auto-intersezioni) incorporato nel worker: modulo come testo, wasm in base64
+const manifoldEmbed = `self.M2S_MANIFOLD_EMBED = ${JSON.stringify({ js: rd('vendor/manifold.js'), wasm: fs.readFileSync('vendor/manifold.wasm').toString('base64') })};\n`;
 const three = rd('vendor/three.module.min.js'), orbit = rd('vendor/OrbitControls.js');
 const icon = 'data:image/png;base64,' + fs.readFileSync('icons/icon-192.png').toString('base64');
 let html = rd('index.html');
@@ -19,7 +21,7 @@ html = html.replace(/<script type="importmap">[\s\S]*?<\/script>\n?/, '');
 html = html.replace('<link rel="manifest" href="manifest.webmanifest">\n', '');
 html = html.replace('<link rel="icon" href="icons/icon-192.png">', `<link rel="icon" href="${icon}">`);
 // bootstrap: crea URL Blob per three -> OrbitControls -> app, riscrivendo gli import
-const boot = `<script id="worker-src" type="text/plain">${esc(core)}\n${esc(worker)}</script>
+const boot = `<script id="worker-src" type="text/plain">${esc(manifoldEmbed)}${esc(core)}\n${esc(worker)}</script>
 <script id="three-src" type="text/plain">${esc(three)}</script>
 <script id="orbit-src" type="text/plain">${esc(orbit)}</script>
 <script id="app-src" type="text/plain">${esc(app)}</script>

@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — app.js
- * Versione: 1.6.0 — 2026-10-07 22:00 (Europe/Rome)
+ * Versione: 1.7.0 — 2026-10-07 22:10 (Europe/Rome)
  * Versione precedente archiviata: archive/app_v1.0.1_20261006-1310.js
  * (2026-10-06: riscritta per editing facce, corpi, report CSV, export STL/OBJ, heatmap deviazione,
  *  viste, IT/EN, tema chiaro, condivisione, PWA e API di integrazione).
@@ -13,14 +13,15 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 // [2026-10-07 v1.5.0] const VERSION = '1.4.1';
 // [2026-10-07 v1.5.1] const VERSION = '1.5.0';
 // [2026-10-07 v1.6.0] const VERSION = '1.5.1';
-const VERSION = '1.6.0';
+// [2026-10-07 v1.7.0] const VERSION = '1.6.0';
+const VERSION = '1.7.0';
 const $ = id => document.getElementById(id);
 const store = { get: k => { try { return localStorage.getItem('m2s.' + k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem('m2s.' + k, v); } catch { /* storage non disponibile */ } } };
 
 // ============================ i18n (IT/EN) ============================
 const DICT = {
   it: {
-    tagline: 'Da mesh triangolare a solido CAD', s_file: 'File', open: 'Apri mesh (STL, OBJ, 3MF)', repair: 'Chiudi i buchi della mesh',
+    tagline: 'Da mesh triangolare a solido CAD', s_file: 'File', open: 'Apri mesh (STL, OBJ, 3MF)', repair: 'Chiudi i buchi della mesh', repair_self: 'Ripara auto-intersezioni (unisci i corpi)', selfint_fixed: 'Auto-intersezioni riparate: {m} corpi uniti, da {b} coppie a {a}.', selfint_fail_internal: 'Riparazione non riuscita: restano {a} intersezioni dentro un corpo (guscio ripiegato su se stesso). La mesh non è stata modificata.', selfint_fail_nobody: 'Riparazione non possibile: nessun corpo chiuso e manifold (usa prima «Chiudi i buchi»).',
     s_detect: 'Riconoscimento', tol: 'Tolleranza (mm)', angle: 'Angolo (°)', snap: 'Arrotonda a valori nominali (Ø, assi, angoli)', analyse: 'Analizza mesh',
     s_result: 'Risultato', csv: 'Scarica report CSV', s_edit: 'Modifica facce',
     edit_hint: 'Tocca una faccia per selezionarla; con «Selezione multipla» (o Shift/Ctrl+clic) ne aggiungi altre.',
@@ -31,7 +32,7 @@ const DICT = {
     t_plane: 'Piano', t_cylinder: 'Cilindro', t_cone: 'Cono', t_sphere: 'Sfera', t_torus: 'Toro', t_thread: 'Filettatura', t_bspline: 'B-spline', t_freeform: 'Freeform',
     t_plane_p: 'Piani', t_cylinder_p: 'Cilindri', t_cone_p: 'Coni', t_sphere_p: 'Sfere', t_torus_p: 'Tori', t_thread_p: 'Filettature', t_bspline_p: 'B-spline', t_freeform_p: 'Freeform (triangoli)',
     f_name: 'File', f_tris: 'Triangoli', f_bodies: 'Corpi', f_size: 'Dimensioni', f_closed: 'Chiusa', f_selfint: 'Auto-intersezioni', closed_u: '(chiusa)', selfint_n: '{n} coppie di triangoli{p}', selfint_warn: 'La mesh si auto-interseca ({n} coppie{p}): volume e riconoscimento possono essere inaffidabili. Correggi il modello nel programma d\'origine (unione booleana).', f_volume: 'Volume', yes: 'sì', no_open: 'no ({o} bordi aperti, {n} non-manifold)',
-    reading: 'Lettura di {f}…', loaded: 'Mesh caricata.', open_warn: 'Mesh aperta: usa «Chiudi i buchi» oppure lo STEP sarà una superficie.', analysing: 'Riconoscimento superfici…',
+    reading: 'Lettura di {f}…', selfint_busy: 'Unione dei corpi sovrapposti…', loaded: 'Mesh caricata.', open_warn: 'Mesh aperta: usa «Chiudi i buchi» oppure lo STEP sarà una superficie.', analysing: 'Riconoscimento superfici…',
     done: 'Analisi completata in {s} s.', many_free: ' Molte zone freeform: prova ad aumentare la tolleranza.', step_gen: 'Generazione STEP…',
     step_ok: 'STEP salvato: {f} facce ({c} spigoli circolari, {l} rettilinei), {s} solido/i.', step_surf: 'STEP salvato: {f} facce, superficie aperta.',
     pdf: 'Report PDF', o_thrcyl: 'Filettature come cilindro nominale (STEP)', pdf_title: 'Report fori', pdf_file: 'File', pdf_size: 'Ingombro', pdf_view: 'vista asse', pdf_type: 'Tipo', pdf_axis: 'Asse', pdf_none: 'Nessun foro', pdf_thread: 'Filetto', pdf_len: 'Lunghezza', pdf_hand: 'Senso', pdf_internal: 'interna', pdf_external: 'esterna', pdf_right: 'destra', pdf_left: 'sinistra', pdf_count: 'n.', pdf_footer: 'misure in mm; X/Y dall\'angolo in basso a sinistra della vista',
@@ -46,7 +47,7 @@ const DICT = {
     csv_head: 'tipo;diametro_mm;profondita_mm;passante;asse_x;asse_y;asse_z;pos_x;pos_y;pos_z;note',
   },
   en: {
-    tagline: 'From triangle mesh to CAD solid', s_file: 'File', open: 'Open mesh (STL, OBJ, 3MF)', repair: 'Close mesh holes',
+    tagline: 'From triangle mesh to CAD solid', s_file: 'File', open: 'Open mesh (STL, OBJ, 3MF)', repair: 'Close mesh holes', repair_self: 'Fix self-intersections (merge bodies)', selfint_fixed: 'Self-intersections fixed: {m} bodies merged, from {b} pairs to {a}.', selfint_fail_internal: 'Repair failed: {a} intersections remain inside one body (shell folded onto itself). The mesh was not changed.', selfint_fail_nobody: 'Cannot repair: no closed manifold body (use "Close mesh holes" first).',
     s_detect: 'Recognition', tol: 'Tolerance (mm)', angle: 'Angle (°)', snap: 'Round to nominal values (Ø, axes, angles)', analyse: 'Analyse mesh',
     s_result: 'Result', csv: 'Download CSV report', s_edit: 'Edit faces',
     edit_hint: 'Tap a face to select it; with "Multi-select" (or Shift/Ctrl+click) you add more.',
@@ -57,7 +58,7 @@ const DICT = {
     t_plane: 'Plane', t_cylinder: 'Cylinder', t_cone: 'Cone', t_sphere: 'Sphere', t_torus: 'Torus', t_thread: 'Thread', t_bspline: 'B-spline', t_freeform: 'Freeform',
     t_plane_p: 'Planes', t_cylinder_p: 'Cylinders', t_cone_p: 'Cones', t_sphere_p: 'Spheres', t_torus_p: 'Tori', t_thread_p: 'Threads', t_bspline_p: 'B-splines', t_freeform_p: 'Freeform (triangles)',
     f_name: 'File', f_tris: 'Triangles', f_bodies: 'Bodies', f_size: 'Size', f_closed: 'Closed', f_selfint: 'Self-intersections', closed_u: '(closed)', selfint_n: '{n} triangle pairs{p}', selfint_warn: 'The mesh intersects itself ({n} pairs{p}): volume and recognition may be unreliable. Fix the model in the source program (boolean union).', f_volume: 'Volume', yes: 'yes', no_open: 'no ({o} open edges, {n} non-manifold)',
-    reading: 'Reading {f}…', loaded: 'Mesh loaded.', open_warn: 'Open mesh: use "Close mesh holes" or the STEP will be a surface.', analysing: 'Recognising surfaces…',
+    reading: 'Reading {f}…', selfint_busy: 'Merging overlapping bodies…', loaded: 'Mesh loaded.', open_warn: 'Open mesh: use "Close mesh holes" or the STEP will be a surface.', analysing: 'Recognising surfaces…',
     done: 'Analysis done in {s} s.', many_free: ' Many freeform areas: try a larger tolerance.', step_gen: 'Generating STEP…',
     step_ok: 'STEP saved: {f} faces ({c} circular, {l} straight edges), {s} solid(s).', step_surf: 'STEP saved: {f} faces, open surface.',
     pdf: 'PDF report', o_thrcyl: 'Threads as nominal cylinder (STEP)', pdf_title: 'Hole report', pdf_file: 'File', pdf_size: 'Overall size', pdf_view: 'view axis', pdf_type: 'Type', pdf_axis: 'Axis', pdf_none: 'No holes', pdf_thread: 'Thread', pdf_len: 'Length', pdf_hand: 'Hand', pdf_internal: 'internal', pdf_external: 'external', pdf_right: 'right', pdf_left: 'left', pdf_count: 'no.', pdf_footer: 'dimensions in mm; X/Y from the lower-left corner of the view',
@@ -246,6 +247,7 @@ function showInfo() {
   ].concat(info.selfInt ? [[t('f_selfint'), t('selfint_n', { n: info.selfInt, p: info.selfIntPartial ? '+' : '' })]] : []).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');   // [v1.5.0] riga auto-intersezioni
   $('meshinfo').hidden = false;
   $('repair').hidden = info.open === 0 && info.nonManifold === 0;   // [v1.4.0] prima: solo info.open === 0
+  $('repairself').hidden = !info.selfInt;   // [v1.7.0]
 }
 function onMesh(r) {
   info = r.info; res = null; sel.clear();
@@ -280,6 +282,16 @@ $('repair').onclick = async () => {
     const r = await call({ cmd: 'repair' });
     onMesh(r); status(r.removed ? t('repaired_nm', { n: r.removed, h: r.holes, a: r.added }) : r.holes ? t('repaired', { h: r.holes, a: r.added }) : t('no_holes'));
     await analyse();
+  } catch (e) { status(t('err') + errText(e), 'err'); } finally { busy(false); }
+};
+
+$('repairself').onclick = async () => {   // [v1.7.0] unione booleana (manifold-3d nel Worker)
+  try {
+    busy(true); status(t('selfint_busy'));
+    const r = await call({ cmd: 'repairSelf' });
+    onMesh(r);
+    if (r.ok) { status(t('selfint_fixed', { m: r.merged, b: r.before, a: r.after })); await analyse(); }
+    else status(t(r.reason === 'nobody' ? 'selfint_fail_nobody' : 'selfint_fail_internal', { a: r.after }), 'warn');
   } catch (e) { status(t('err') + errText(e), 'err'); } finally { busy(false); }
 };
 

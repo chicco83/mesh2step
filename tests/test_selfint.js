@@ -14,7 +14,8 @@ const box = (x, y, z, s) => {
     const soup = await M2S.parseFile(f, b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength));
     const M = M2S.buildMesh(soup), r = M2S.findSelfIntersections(M);
     console.log(f.padEnd(26), 'auto-intersezioni:', r.count, r.partial ? '(parziale)' : '');
-    if (r.count !== 0) ok = false;
+    // [v1.7.0] overlap_pin.stl ha due shell sovrapposte di proposito (campione per la riparazione): deve avere intersezioni
+    if (f === 'overlap_pin.stl' ? r.count === 0 : r.count !== 0) ok = false;
   }
   const one = M2S.findSelfIntersections(M2S.buildMesh(new Float32Array(box(0, 0, 0, 10))));
   const two = M2S.findSelfIntersections(M2S.buildMesh(new Float32Array([...box(0, 0, 0, 10), ...box(3, 4.3, 6.1, 10)])));

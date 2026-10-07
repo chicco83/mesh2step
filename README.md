@@ -1,5 +1,5 @@
 # Mesh2STEP
-Versione: 1.6.0 — 2026-10-07 22:00
+Versione: 1.7.0 — 2026-10-07 22:10
 <!-- [2026-10-06 13:45] Versione precedente 1.0.1 (2026-10-06 13:10): README delle funzioni v1.0
      (piani, cilindri, sfere); aggiornato con tutte le funzioni v1.1–v1.3. -->
 
@@ -42,7 +42,8 @@ Gira interamente nel browser, anche offline: **i file non vengono caricati da ne
 | **Topologia** | Adiacenze, bordi aperti, spigoli non-manifold, corpi separati |
 | **Misure** | Triangoli, dimensioni, volume, area |
 | **Chiudi i buchi** | Ear clipping sul piano medio; anelli complanari annidati chiusi come **poligoni con fori** (es. faccia superiore con fori) |
-| **Ripara non-manifold** | Duplicati, coppie schiena-a-schiena, alette su spigoli con >2 triangoli (poi chiude i buchi). Le **auto-intersezioni** vengono rilevate e segnalate (riga nelle informazioni + avviso), non riparate |
+| **Ripara non-manifold** | Duplicati, coppie schiena-a-schiena, alette su spigoli con >2 triangoli (poi chiude i buchi) |
+| **Ripara auto-intersezioni** | Le auto-intersezioni si rilevano (riga nelle informazioni + avviso) e si riparano **unendo i corpi sovrapposti** con una booleana robusta (manifold-3d, WebAssembly locale). Non risolve un guscio ripiegato su se stesso |
 
 ### Riconoscimento superfici
 | Superficie | Metodo | Dati |
@@ -165,7 +166,7 @@ index.html            pagina dell'app (GitHub Pages) · sw.js · manifest.webman
 src/core.js           parsing, topologia, riconoscimento, editing, riparazione, export STEP (senza DOM)
 src/worker.js         Web Worker
 src/app.js            interfaccia, viewer, i18n, integrazione
-vendor/               three.js 0.169 + OrbitControls (MIT)
+vendor/               three.js 0.169 + OrbitControls (MIT), manifold-3d (Apache-2.0, wasm)
 build.mjs             build single-file offline in dist/
 dist/                 mesh2step_v<versione>_<AAAAMMGG-HHMM>.html
 desktop/              app Windows WebView2 (C#/.NET 8) + build-desktop.ps1 / .sh
@@ -190,7 +191,7 @@ Regole di versioning, documentazione e git: [CLAUDE.md](CLAUDE.md).
 ## Limiti noti
 - Filettature: di default esportate sfaccettate (faccia `THREAD M…`); il cilindro nominale è un'opzione.
 - B-spline per zone tipo "campo di altezze" e per superfici chiuse tubolari (anche incurvate); gusci con poli o rientranze restano sfaccettati.
-- Riparazione: buchi e spigoli non-manifold; auto-intersezioni solo **rilevate**.
+- Riparazione: buchi, spigoli non-manifold e auto-intersezioni **tra corpi** (unione); non un guscio che si taglia da solo.
 - Report PDF: una sola pagina (righe oltre ~28 troncate).
 - App Windows provata su Windows 11 (avvio, file da argomento, export); non ancora «Apri con…»/trascinamento né un PC senza WebView2.
 
@@ -208,3 +209,4 @@ Stato di tutte le migliorie: [IMPROVEMENTS.md](IMPROVEMENTS.md).
 ---
 Ispirato a mesh2solid.thavision.com; implementazione indipendente (clean-room), nessun codice, testo o asset dell'originale.
 three.js © three.js authors, licenza MIT (`vendor/LICENSE-three.txt`).
+manifold-3d © Emmett Lalish e collaboratori, licenza Apache 2.0 (`vendor/LICENSE-manifold.txt`).

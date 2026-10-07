@@ -9,7 +9,8 @@ VER=$(cat ../VERSION); STAMP=${BUILD_STAMP:-$(TZ=Europe/Rome date +%Y%m%d-%H%M)}
 rm -rf wwwroot && mkdir -p wwwroot/src wwwroot/vendor wwwroot/icons
 cp ../index.html ../manifest.webmanifest wwwroot/
 cp ../src/app.js ../src/worker.js ../src/core.js wwwroot/src/
-cp ../vendor/three.module.min.js ../vendor/OrbitControls.js wwwroot/vendor/
+# [2026-10-07 v1.7.0] prima: solo three.module.min.js e OrbitControls.js (manifold-3d serve a «Ripara auto-intersezioni»)
+cp ../vendor/three.module.min.js ../vendor/OrbitControls.js ../vendor/manifold.js ../vendor/manifold.wasm wwwroot/vendor/
 cp ../icons/*.png wwwroot/icons/
 dotnet publish -c Release -o publish
 mkdir -p out && cp publish/Mesh2STEP.exe "out/Mesh2STEP_v${VER}_${STAMP}.exe"

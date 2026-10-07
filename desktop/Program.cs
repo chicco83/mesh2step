@@ -1,5 +1,5 @@
 // Mesh2STEP Desktop — Program.cs
-// Versione: 1.4.1 — 2026-10-07 00:40 (Europe/Rome)
+// Versione: 1.7.0 — 2026-10-07 22:10 (Europe/Rome)
 // Finestra WinForms con WebView2. Tutti i file web sono risorse incorporate servite su
 // https://app.mesh2step/ tramite WebResourceRequested (nessun file estratto su disco).
 // Argomento da riga di comando (o "Apri con…" / trascinamento sull'exe): il file viene servito su
@@ -22,7 +22,7 @@ namespace Mesh2Step.Desktop
         static readonly Dictionary<string, string> Mime = new(StringComparer.OrdinalIgnoreCase)
         {
             [".html"] = "text/html; charset=utf-8", [".js"] = "text/javascript; charset=utf-8", [".css"] = "text/css",
-            [".png"] = "image/png", [".json"] = "application/json", [".webmanifest"] = "application/manifest+json",
+            [".png"] = "image/png", [".wasm"] = "application/wasm",   // [v1.7.0] manifold-3d [".json"] = "application/json", [".webmanifest"] = "application/manifest+json",
             [".stl"] = "application/octet-stream", [".obj"] = "text/plain", [".3mf"] = "application/octet-stream",
         };
 

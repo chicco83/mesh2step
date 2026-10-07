@@ -1,5 +1,20 @@
 # CHANGELOG — Mesh2STEP
-Versione documento: 1.6.0 — 2026-10-07 22:00
+Versione documento: 1.7.0 — 2026-10-07 22:10
+
+## 15. [1.7.0] — 2026-10-07 22:10 — Riparazione delle auto-intersezioni (unione booleana)
+- **Pulsante «Ripara auto-intersezioni (unisci i corpi)»**, visibile quando il rilevamento (1.5.0) trova coppie di triangoli che si tagliano.
+  Ogni corpo chiuso e manifold diventa un `Manifold` ([manifold-3d](https://github.com/elalish/manifold) in WebAssembly, Apache-2.0, `vendor/manifold.js` + `manifold.wasm`,
+  ~620 KB, caricato nel Worker solo alla prima riparazione) e i corpi vengono **uniti con una booleana robusta**: parti sovrapposte → un solo corpo.
+  Corpi aperti/non-manifold restano com'erano. Il risultato è verificato (`findSelfIntersections` dopo l'unione): se restano intersezioni
+  (guscio ripiegato su se stesso: **non risolto**) la mesh non viene modificata e si avvisa.
+- `repairSelfIntersections(M, wasm)` nel core (il modulo wasm è iniettato: il core resta senza dipendenze); comando `repairSelf` del Worker.
+- Campione `overlap_pin.stl` (perno che attraversa una piastra, due shell sovrapposte): 260 coppie → 0, volume 13003,70 (unione), STEP `_riparata`
+  = 1 solido, 8 piani + 2 cilindri, `valid=True`, volume 13005,31 (il cilindro analitico è un po' più grande del poligono a 64 lati); l'STEP non riparato ha 2 solidi sovrapposti (volume 13507,96 contati doppi).
+- Build single-file: modulo e wasm incorporati nel Worker (testo + base64, `dist` 1,7 MB); provato via HTTP, **non** da `file://`.
+  App Windows: i due file sono copiati da `build-desktop.ps1/.sh` e `.wasm` ha il suo MIME in `Program.cs`. Service worker: i due file sono nella cache.
+- Limiti: i nomi dei corpi uniti si perdono; l'unione cancella la separazione dei corpi (è lo scopo, ma se i corpi dovevano restare distinti non usarla).
+- Test: `tests/test_selfrepair.js` (due scatole: 1844,39 = 2000 − 155,61; scatole lontane; corpo aperto lasciato) e `run_core.js` scrive `<nome>_riparata.step`; in CI.
+- Rollback: `git revert` del commit; senza il pulsante restano il rilevamento e l'avviso della 1.5.0.
 
 ## 14. [1.6.0] — 2026-10-07 22:00 — B-spline chiuse anche per tubi incurvati
 - `fitBSplineClosed` non richiede più un asse dritto: la **spina** (centro delle sezioni a z costante) è un polinomio cubico fitto ai

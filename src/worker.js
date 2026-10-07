@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — worker.js
- * Versione: 1.5.1 — 2026-10-07 07:15 (Europe/Rome)
+ * Versione: 1.7.0 — 2026-10-07 22:10 (Europe/Rome)
  * Versione precedente archiviata in archive/worker_v1.0.0_20261005-1710.js (2026-10-06: riscrittura
  * per editing, riparazione, export STL/OBJ, deviazione, corpi).
  *
@@ -8,6 +8,7 @@
  * Protocollo (main -> worker), risposta {id, ok, ...} oppure {id, ok:false, error, best?}:
  *   load    {name, buf}            -> {positions, info}
  *   repair  {}                     -> {positions, info, holes, added}   chiude i buchi
+ *   repairSelf {}                  -> {positions, info, ok, reason, before, after, merged, kept}  unione booleana dei corpi sovrapposti [v1.7.0]
  *   analyse {opts}                 -> risultato analisi (vedi result())
  *   edit    {ids, as, maxErr}      -> risultato analisi aggiornato      (unione/conversione facce)
  *   undo    {}                     -> risultato analisi precedente
@@ -20,6 +21,23 @@
 if (typeof M2S === 'undefined') importScripts('core.js');   // in dist il core è già concatenato
 
 let M = null, seg = null, lastName = 'mesh', lastOpts = null;
+
+// [v1.7.0] manifold-3d (WebAssembly, vendor/) caricato solo alla prima riparazione di auto-intersezioni. import() dinamico: vale anche
+// nei worker classici. self.M2S_MANIFOLD_EMBED = { js, wasm(base64) } lo scrive build.mjs nella build single-file (dist).
+let manifoldP = null;
+function loadManifold() {
+  if (!manifoldP) manifoldP = (async () => {
+    let cfg = {};
+    if (self.M2S_MANIFOLD_EMBED) {   // build single-file: modulo e wasm incorporati (testo + base64), si ricreano come URL Blob / ArrayBuffer
+      const E = self.M2S_MANIFOLD_EMBED;
+      cfg = { js: URL.createObjectURL(new Blob([E.js], { type: 'text/javascript' })), wasm: Uint8Array.from(atob(E.wasm), ch => ch.charCodeAt(0)).buffer };
+    }
+    const mod = await import(cfg.js || '../vendor/manifold.js');
+    // wasmBinary + locateFile fittizio: da un modulo blob: `new URL('manifold.wasm', import.meta.url)` non è valido
+    const w = await mod.default(cfg.wasm ? { wasmBinary: cfg.wasm, locateFile: f => f } : {}); w.setup(); return w;
+  })().catch(e => { manifoldP = null; throw e; });
+  return manifoldP;
+}
 const history = [];   // stati precedenti di seg per "Annulla" (max 20)
 
 // ---- riassunto serializzabile di una regione (senza liste di triangoli) ----
@@ -86,6 +104,11 @@ self.onmessage = async ({ data }) => {
       M = M2S.buildMesh(r.soup); seg = null; history.length = 0;
       const { pos, info } = meshPayload();
       reply({ positions: pos, info, holes: r.holes, added: r.added, removed: fx.removed }, [pos.buffer]);
+    } else if (cmd === 'repairSelf') {   // [v1.7.0] unione booleana dei corpi sovrapposti
+      const r = M2S.repairSelfIntersections(M, await loadManifold());
+      if (r.ok) { M = M2S.buildMesh(r.soup); seg = null; history.length = 0; }
+      const { pos, info } = meshPayload();
+      reply({ positions: pos, info, ok: r.ok, reason: r.reason || '', before: r.before, after: r.after, merged: r.merged, kept: r.kept }, [pos.buffer]);
     } else if (cmd === 'analyse') {
       const t0 = performance.now();
       lastOpts = data.opts; seg = M2S.segment(M, data.opts); history.length = 0;

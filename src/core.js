@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — core.js
- * Versione: 1.6.0 — 2026-10-07 22:00 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
+ * Versione: 1.7.0 — 2026-10-07 22:10 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
  * ---------------------------------------------------------------------------
  * Motore indipendente dalla UI (gira nel Web Worker del browser e in Node per i test).
  *   1. Parsing  : STL (binario/ASCII), OBJ, 3MF (zip letto a mano + DecompressionStream)
@@ -15,7 +15,8 @@
   // [2026-10-07 v1.5.0] const VERSION = '1.4.1';
   // [2026-10-07 v1.5.1] const VERSION = '1.5.0';
   // [2026-10-07 v1.6.0] const VERSION = '1.5.1';
-  const VERSION = '1.6.0';
+  // [2026-10-07 v1.7.0] const VERSION = '1.6.0';
+  const VERSION = '1.7.0';
 
   // ===================== Helper vettoriali (array [x,y,z]) =====================
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -1384,6 +1385,41 @@
     return { count, pairs, tris: bad, partial };
   }
 
+  // ---- [v1.7.0 2026-10-07] RIPARAZIONE AUTO-INTERSEZIONI (unione booleana dei corpi sovrapposti) ----
+  // Ogni corpo (componente connessa) chiuso e manifold diventa un Manifold (libreria manifold-3d in WebAssembly, `vendor/manifold.*`,
+  // iniettata come `wasm` per tenere il core senza dipendenze) e i corpi si UNISCONO con una booleana robusta: le parti sovrapposte
+  // si fondono e le intersezioni spariscono. Corpi aperti/non-manifold restano com'erano (si riparano prima con «Ripara»).
+  // Limite: l'auto-intersezione DENTRO un solo corpo (guscio ripiegato su se stesso) non viene risolta: l'esito è verificato e, se
+  // restano intersezioni, `ok` è falso. I nomi dei corpi uniti si perdono (restano quelli dei corpi non toccati).
+  // Restituisce { ok, soup, merged, kept, before, after, volume }.
+  function repairSelfIntersections(M, wasm) {
+    const { Manifold, Mesh } = wasm, before = findSelfIntersections(M).count;
+    const parts = [], keep = [];
+    for (let c = 0; c < M.nComp; c++) {
+      const tris = []; for (let t = 0; t < M.nT; t++) if (M.comp[t] === c) tris.push(t);
+      let closed = true; for (const t of tris) for (let k = 0; k < 3; k++) if (M.ET[M.triEdge[3 * t + k]].length !== 2) closed = false;
+      let man = null;
+      if (closed) {
+        const vmap = new Map(), vp = [], tv = []; let vol = 0;
+        for (const t of tris) {
+          const ids = [0, 1, 2].map(k => { const v = M.T[3 * t + k]; if (!vmap.has(v)) { vmap.set(v, vp.length / 3); vp.push(M.V[3 * v], M.V[3 * v + 1], M.V[3 * v + 2]); } return vmap.get(v); });
+          tv.push(...ids); vol += dot(M.P(M.T[3 * t]), cross(M.P(M.T[3 * t + 1]), M.P(M.T[3 * t + 2]))) / 6;
+        }
+        if (vol < 0) for (let i = 0; i < tv.length; i += 3) { const x = tv[i + 1]; tv[i + 1] = tv[i + 2]; tv[i + 2] = x; }   // guscio rovesciato: lo si raddrizza
+        try { man = new Manifold(new Mesh({ numProp: 3, vertProperties: new Float32Array(vp), triVerts: new Uint32Array(tv) })); if (man.status() !== 'NoError' || man.isEmpty()) man = null; } catch (e) { man = null; }
+      }
+      if (man) parts.push(man); else keep.push(c);
+    }
+    if (!parts.length) return { ok: false, reason: 'nobody', before, after: before, merged: 0, kept: keep.length };
+    const u = parts.length > 1 ? Manifold.union(parts) : parts[0], om = u.getMesh(), nv = om.vertProperties, tvr = om.triVerts, np = om.numProp;
+    let kt = 0; for (let t = 0; t < M.nT; t++) if (keep.includes(M.comp[t])) kt++;
+    const soup = new Float32Array((tvr.length / 3 + kt) * 9); let o = 0;
+    for (let i = 0; i < tvr.length; i++) { const v = tvr[i]; soup[o++] = nv[v * np]; soup[o++] = nv[v * np + 1]; soup[o++] = nv[v * np + 2]; }
+    for (let t = 0; t < M.nT; t++) if (keep.includes(M.comp[t])) for (let k = 0; k < 3; k++) { const p = M.P(M.T[3 * t + k]); soup[o++] = p[0]; soup[o++] = p[1]; soup[o++] = p[2]; }
+    const M2 = buildMesh(soup), after = findSelfIntersections(M2).count;
+    return { ok: after === 0, soup, merged: parts.length, kept: keep.length, before, after, volume: M2.volume, reason: after ? 'internal' : '' };
+  }
+
   function fillHoles(M) {
     const half = new Map();
     for (let t = 0; t < M.nT; t++) for (let k = 0; k < 3; k++) {
@@ -2005,7 +2041,7 @@
     return { M, seg };
   }
 
-  const API = { VERSION, parseFile, parseSTL, parseOBJ, parse3MF, buildMesh, segment, exportSTEP, analyse, fitCylinder, fitSphere, fitPlane, fitCone, fitTorus, fitBSpline, detectThread, threadsToCylinders, fixNonManifold, findSelfIntersections, fitBSplineClosed, reportPdf, fillHoles, features, deviation, surfDist, editRegions, regionStats };
+  const API = { VERSION, parseFile, parseSTL, parseOBJ, parse3MF, buildMesh, segment, exportSTEP, analyse, fitCylinder, fitSphere, fitPlane, fitCone, fitTorus, fitBSpline, detectThread, threadsToCylinders, fixNonManifold, findSelfIntersections, repairSelfIntersections, fitBSplineClosed, reportPdf, fillHoles, features, deviation, surfDist, editRegions, regionStats };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   else root.M2S = API;
 })(typeof self !== 'undefined' ? self : this);

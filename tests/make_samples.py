@@ -1,5 +1,5 @@
 # Mesh2STEP — tests/make_samples.py
-# Versione: 1.6.0 — 2026-10-07 22:00
+# Versione: 1.7.0 — 2026-10-07 22:10
 # Genera mesh di prova (STL) con geometria nota tramite manifold3d (booleane robuste).
 import sys, os
 import numpy as np
@@ -99,6 +99,14 @@ save(vase, 'vase.stl')
 # non e' piu' "a stella" rispetto a un asse dritto (la parete ripida ha normali quasi parallele all'asse) -> tubo lungo una spina curva
 vase_bent = Manifold.revolve(CrossSection([prof]), 96).warp(lambda v: (v[0] + 0.05 * (v[2] - 20) ** 2, v[1], v[2]))
 save(vase_bent, 'vase_bent.stl')
+
+# 10-quater) [v1.7.0] Perno che attraversa una piastra, ma i due corpi NON sono fusi (due shell sovrapposte nello stesso STL):
+# auto-intersezione tipica di un'esportazione da CAD senza unione booleana. Dopo «Ripara auto-intersezioni» = piastra + perno uniti.
+pin_plate = Manifold.cube([40, 30, 10])
+pin = Manifold.cylinder(30, 4, 4, 64).translate([20, 15, -10])
+tmp = trimesh.util.concatenate([trimesh.Trimesh(m.to_mesh().vert_properties[:, :3], m.to_mesh().tri_verts) for m in (pin_plate, pin)])
+tmp.export(os.path.join(out, 'overlap_pin.stl'))
+print('overlap_pin.stl', len(tmp.faces), 'tri, unione attesa', round((pin_plate + pin).volume(), 4))
 
 # 11) 3MF con due oggetti nominati e trasformazioni di build (traslazioni)
 def mesh_xml(m, oid, name):

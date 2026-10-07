@@ -1,5 +1,5 @@
 # CLAUDE.md — Mesh2STEP
-Versione: 1.6.0 — 2026-10-07 22:00
+Versione: 1.7.0 — 2026-10-07 22:10
 <!-- [2026-10-06 14:10] versione precedente (2026-10-06 13:45, commit 61c8f81): solo regole di versioning,
      documenti, test, git e progetto. Ora anche stato, ambiente, mappa del codice, insidie e prossimi passi
      per riprendere il lavoro da Claude Code. Le regole precedenti sono riportate invariate qui sotto. -->
@@ -14,13 +14,13 @@ Replica clean-room di mesh2solid.thavision.com con le funzioni "Pro" gratis e va
 - Repo: `https://github.com/chicco83/mesh2step` — sito: `https://chicco83.github.io/mesh2step/` (Pages da `main` / root)
 - Copia locale dell'utente: `G:\Il mio Drive\CRISTIANO\VIBE CODING\mesh2step` (cartella Google Drive)
 
-## 2. Stato al 2026-10-07 22:00
+## 2. Stato al 2026-10-07 22:10
 | Voce | Stato |
 |---|---|
-| Versione | **1.6.0** (`main`; v1.5.1 `153d6c0`) — CI e Pages da controllare |
+| Versione | **1.7.0** (`main`; v1.6.0 `1caf165`) — CI e Pages da controllare |
 | Sito Pages | ✅ online alla 1.4.0, provato il 2026-10-07: bolt_m6 (opzione filettatura→cilindro: 5 facce, 2 cilindri), PDF, toro (2 facce toroidali), service worker attivo, console pulita. Provati in locale (1.3.2–1.4.0): tema chiaro/scuro, selezione, unione/annulla, deviazione, riparazione, export STEP/STL/OBJ |
-| Test core + OpenCASCADE | 18 STEP `valid=True` (16 + `vase`, `vase_bent`); `test_repair.js`, `test_pdf.js`, `test_selfint.js`, `test_devthr.js` ok (vedi §6) |
-| CI GitHub (`ci.yml`) | ✅ verde sui push 1.5.0 e 1.5.1 (esegue test core, OpenCASCADE, riparazione, PDF, auto-intersezioni, deviazione filetti) |
+| Test core + OpenCASCADE | 20 STEP `valid=True` (18 + `overlap_pin`, `overlap_pin_riparata`); `test_repair.js`, `test_pdf.js`, `test_selfint.js`, `test_devthr.js`, `test_selfrepair.js` ok (vedi §6) |
+| CI GitHub (`ci.yml`) | ✅ verde sui push 1.5.0, 1.5.1 e 1.6.0 (test core, OpenCASCADE, riparazione, PDF, auto-intersezioni, deviazione filetti); dalla 1.7.0 anche `test_selfrepair.js` |
 | App Windows (`desktop/`) | ✅ provata su Windows 11 il 2026-10-07 con la build CI 1.4.1 (WebView2 154): avvio, apertura file da argomento, analisi, export STEP/PDF/STL salvati su disco (STEP rivalidati con OCP: `valid=True`). Bug trovato e corretto: risorse in sottocartelle (backslash in `RecursiveDir`). **Non provati**: «Apri con…»/trascinamento sull'exe, SmartScreen su altro PC, installazione pulita senza WebView2 |
 | Migliorie | stato per voce in `IMPROVEMENTS.md` (✅ / 🟡 parziale / ⏸️ rinviata) |
 
@@ -50,7 +50,7 @@ python -m http.server 8000   # poi http://localhost:8000
 | `src/app.js` | UI: dizionario `DICT` IT/EN, tema, viewer three.js, picking/selezione, tabelle, corpi, editing, export, CSV, integrazione (`postMessage`, `?url=`, `launchQueue`, service worker) |
 | `index.html` | Layout e CSS (token colore in `:root` e `[data-theme="light"]`), import map verso `vendor/` |
 | `sw.js` · `manifest.webmanifest` · `icons/` | PWA (cambiare `CACHE` a ogni versione) |
-| `vendor/` | three.js 0.169 `three.module.min.js` + `OrbitControls.js` (MIT) |
+| `vendor/` | three.js 0.169 `three.module.min.js` + `OrbitControls.js` (MIT); `manifold.js` + `manifold.wasm` (manifold-3d 3.5.4, Apache-2.0: riparazione auto-intersezioni; ESM + wasm, caricati con `import()` nel Worker) |
 | `build.mjs` | Build single-file offline in `dist/` (three/app/worker incorporati come moduli Blob) |
 | `desktop/` | App Windows WebView2 (C#/.NET 8): `Program.cs` serve i file incorporati su `https://app.mesh2step/` |
 | `tests/` | `make_samples.py` (mesh note con manifold3d), `run_core.js`, `check_step.py`, `samples/` |
@@ -91,6 +91,7 @@ node tests/test_repair.js          # riparazione non-manifold (exit 1 se fallisc
 node tests/test_pdf.js             # report PDF: struttura e conteggio fori
 node tests/test_selfint.js         # auto-intersezioni: campioni chiusi = 0, due scatole sovrapposte > 0
 node tests/test_devthr.js          # deviazione filetti dal cilindro nominale (bolt_m6: ~0,63 mm)
+node tests/test_selfrepair.js      # riparazione auto-intersezioni (manifold-3d): due scatole 1844,39, lontane 2000, corpo aperto lasciato
 node build.mjs                     # build single-file in dist/
 ```
 Per l'interfaccia: prova nel browser caricamento, analisi, selezione, modifica/annulla, tutti gli export.
@@ -126,6 +127,8 @@ Per l'interfaccia: prova nel browser caricamento, analisi, selezione, modifica/a
 | bump | 5 piani + 1 B-spline | 8799,84 |
 | vase | 2 piani + 1 B-spline **chiusa** (periodica in angolo) | 27419,14 (mesh 27407,17) |
 | vase_bent | 2 piani + 1 B-spline chiusa 24×18 (asse incurvato) | 21105,66 (mesh 21082,44) |
+| overlap_pin | 2 solidi sovrapposti (non riparato: 8 piani + 1 cilindro) | 13507,96 (doppio conteggio) |
+| overlap_pin_riparata | unione: 1 solido, 8 piani + 2 cilindri | 13005,31 (unione mesh 13003,70) |
 | shaft | 7 piani + 1 cilindro | 21924,78 |
 | named_parts | 2 solidi "Piastra", "Perno" | 11717,26 |
 | bolt_m6 | 3 piani + 1 cilindro + 1 filettatura M6 destra (sfaccettata) | ~756 |
@@ -147,17 +150,20 @@ Tutti devono essere `valid=True`; `check_step.py` esce con codice 1 altrimenti.
   raccordo); `extrude` con twist positivo = filetto destro; usare tanti strati quanti punti del profilo,
   altrimenti i triangoli diventano zig-zag (vicino più simile > 45°) e nulla viene riconosciuto.
 - **3MF di trimesh**: il nome dell'oggetto è `geometry_0` (non è un bug).
+- **manifold-3d in un Worker classico / modulo blob**: `import()` dinamico (gli `import` statici non valgono nei worker classici); da un modulo `blob:` serve `locateFile` fittizio oltre a `wasmBinary`. Dopo `new Manifold(...)` controllare `status()`: un guscio aperto o non manifold non si può unire.
+- **`desktop/build-desktop.sh`**: nel working tree su Google Drive perde il bit eseguibile (100644); prima di committarlo `git update-index --chmod=+x desktop/build-desktop.sh`, altrimenti la CI (`./desktop/build-desktop.sh`) fallisce.
 - **Timestamp**: usare l'ora reale (`Get-Date` / `date`), mai orari stimati.
 
 ## 8. Prossimi passi (in ordine di priorità)
+Fatti il 2026-10-07 (v1.7.0): riparazione delle auto-intersezioni tra corpi (unione booleana, manifold-3d).
 Fatti il 2026-10-07 (v1.6.0): B-spline chiuse anche per tubi incurvati (spina curva, tappi piani staccati).
 Fatti il 2026-10-07 (v1.5.1): deviazione dei filetti dal cilindro nominale (freeform = 0 per scelta).
 Fatti il 2026-10-07 (v1.5.0): rilevamento auto-intersezioni, B-spline chiuse, pulsante «Converti in STEP» in 3D STL Multipart Maker v0.6.2-beta.
 Fatti il 2026-10-07 (v1.4.0): filettature→cilindro nominale, sfere spurie, sfera/toro completi, riparazione non-manifold, report PDF, deviazione B-spline per triangolo.
 1. ~~Provare l'exe Windows~~ ✅ fatto il 2026-10-07 (v1.4.1). Restano da provare «Apri con…» / trascinamento sull'exe e un PC senza WebView2.
    apertura file da argomento/trascinamento, download STEP dentro WebView2. Correggere `Program.cs` se serve. (Serve un PC Windows.)
-2. ~~Controllare l'esito di `ci.yml`~~ ✅ verde su 1.5.0 e 1.5.1; controllare quello della 1.6.0.
+2. ~~Controllare l'esito di `ci.yml`~~ ✅ verde su 1.5.0, 1.5.1, 1.6.0; controllare quello della 1.7.0.
 3. ~~Pulsante «Converti in STEP»~~ ✅ fatto nel repo `3d-stl-multipart-maker` (v0.6.2-beta); da provare dal vivo (e dalla sua versione Windows).
-4. Auto-intersezioni: ✅ rilevamento (1.5.0); **riparazione** rinviata (serve una booleana robusta).
+4. Auto-intersezioni: ✅ rilevamento (1.5.0) e riparazione tra corpi (1.7.0); resta il guscio ripiegato su se stesso (nessun campione: ancora da costruire).
 5. B-spline chiuse ✅ per tubi anche incurvati (1.5.0–1.6.0); restano gusci con poli o rientranze. Deviazione filetti ✅ 1.5.1 (freeform = 0 per scelta).
 6. Report PDF su più pagine (oltre ~28 fori le righe vengono troncate con «… (+n)»).
