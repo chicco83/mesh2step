@@ -1,5 +1,5 @@
 # CLAUDE.md — Mesh2STEP
-Versione: 1.7.0 — 2026-10-07 22:10
+Versione: 1.8.0 — 2026-10-08 23:35
 <!-- [2026-10-06 14:10] versione precedente (2026-10-06 13:45, commit 61c8f81): solo regole di versioning,
      documenti, test, git e progetto. Ora anche stato, ambiente, mappa del codice, insidie e prossimi passi
      per riprendere il lavoro da Claude Code. Le regole precedenti sono riportate invariate qui sotto. -->
@@ -14,12 +14,12 @@ Replica clean-room di mesh2solid.thavision.com con le funzioni "Pro" gratis e va
 - Repo: `https://github.com/chicco83/mesh2step` — sito: `https://chicco83.github.io/mesh2step/` (Pages da `main` / root)
 - Copia locale dell'utente: `G:\Il mio Drive\CRISTIANO\VIBE CODING\mesh2step` (cartella Google Drive)
 
-## 2. Stato al 2026-10-07 22:10
+## 2. Stato al 2026-10-08 23:35
 | Voce | Stato |
 |---|---|
-| Versione | **1.7.0** (`main`; v1.6.0 `1caf165`) — CI e Pages da controllare |
+| Versione | **1.8.0** (branch di lavoro; v1.7.0 `7c900ed`) — CI e Pages da controllare |
 | Sito Pages | ✅ online alla 1.4.0, provato il 2026-10-07: bolt_m6 (opzione filettatura→cilindro: 5 facce, 2 cilindri), PDF, toro (2 facce toroidali), service worker attivo, console pulita. Provati in locale (1.3.2–1.4.0): tema chiaro/scuro, selezione, unione/annulla, deviazione, riparazione, export STEP/STL/OBJ |
-| Test core + OpenCASCADE | 20 STEP `valid=True` (18 + `overlap_pin`, `overlap_pin_riparata`); `test_repair.js`, `test_pdf.js`, `test_selfint.js`, `test_devthr.js`, `test_selfrepair.js` ok (vedi §6) |
+| Test core + OpenCASCADE | 25 STEP `valid=True` (20 + 5 da `test_hole.js`: `plate_hole_{clearance,tap,thread,diameter}`, `countersink_tap`); `test_hole.js`, `test_repair.js`, `test_pdf.js`, `test_selfint.js`, `test_devthr.js`, `test_selfrepair.js` ok (vedi §6) |
 | CI GitHub (`ci.yml`) | ✅ verde sui push 1.5.0, 1.5.1 e 1.6.0 (test core, OpenCASCADE, riparazione, PDF, auto-intersezioni, deviazione filetti); dalla 1.7.0 anche `test_selfrepair.js` |
 | App Windows (`desktop/`) | ✅ provata su Windows 11 il 2026-10-07 con la build CI 1.4.1 (WebView2 154): avvio, apertura file da argomento, analisi, export STEP/PDF/STL salvati su disco (STEP rivalidati con OCP: `valid=True`). Bug trovato e corretto: risorse in sottocartelle (backslash in `RecursiveDir`). **Non provati**: «Apri con…»/trascinamento sull'exe, SmartScreen su altro PC, installazione pulita senza WebView2 |
 | Migliorie | stato per voce in `IMPROVEMENTS.md` (✅ / 🟡 parziale / ⏸️ rinviata) |
@@ -45,7 +45,7 @@ python -m http.server 8000   # poi http://localhost:8000
 ## 4. Mappa del codice
 | File | Contenuto |
 |---|---|
-| `src/core.js` | Motore senza DOM (IIFE, esporta `M2S` in Worker e `module.exports` in Node). Sezioni: **1. Parsing** (`parseSTL`, `parseOBJ`, `parse3MF` con `unzip`/`inflateRaw`, `parseFile`) · **2. Topologia** (`buildMesh`: saldatura, normali, spigoli `E0/E1/ET`, vicini `nb`, componenti `comp`, nomi corpi) · **3. Fitting** (`fitPlane`, `fitCircle2D`, `axisFromNormals`, `fitCylinder`, `fitSphere`) · **4. Riconoscimento** (`segment`, stadi 4-00 → 4f, vedi sotto) · **3-bis. Primitive/utilità** (`fitCone`, `coneDist`, `fitTorus`, `torusDist`, `cylErr`, `ISO_METRIC`, `detectThread`, `fitBSpline`, `fillHoles`, `fixNonManifold`, `findSelfIntersections`, `fitBSplineClosed`, `threadsToCylinders`, `reportPdf`, `regionStats`, `editRegions`, `features`, `surfDist`, `deviation`) · **5. Export** (`stepNum`, `exportSTEP`) · `analyse` |
+| `src/core.js` | Motore senza DOM (IIFE, esporta `M2S` in Worker e `module.exports` in Node). Sezioni: **1. Parsing** (`parseSTL`, `parseOBJ`, `parse3MF` con `unzip`/`inflateRaw`, `parseFile`) · **2. Topologia** (`buildMesh`: saldatura, normali, spigoli `E0/E1/ET`, vicini `nb`, componenti `comp`, nomi corpi) · **3. Fitting** (`fitPlane`, `fitCircle2D`, `axisFromNormals`, `fitCylinder`, `fitSphere`) · **4. Riconoscimento** (`segment`, stadi 4-00 → 4f, vedi sotto) · **3-bis. Primitive/utilità** (`fitCone`, `coneDist`, `fitTorus`, `torusDist`, `cylErr`, `ISO_METRIC`, `detectThread`, `fitBSpline`, `fillHoles`, `fixNonManifold`, `findSelfIntersections`, `fitBSplineClosed`, `threadsToCylinders`, `reportPdf`, `regionStats`, `editRegions`, `resizeHole` (+ `holeTarget`, `HOLE_SIZES`), `features`, `surfDist`, `deviation`) · **5. Export** (`stepNum`, `exportSTEP`) · `analyse` |
 | `src/worker.js` | Protocollo `load / repair / analyse / edit / undo / step / stl / obj`; riassunti serializzabili delle regioni; cronologia per Annulla |
 | `src/app.js` | UI: dizionario `DICT` IT/EN, tema, viewer three.js, picking/selezione, tabelle, corpi, editing, export, CSV, integrazione (`postMessage`, `?url=`, `launchQueue`, service worker) |
 | `index.html` | Layout e CSS (token colore in `:root` e `[data-theme="light"]`), import map verso `vendor/` |
@@ -91,6 +91,7 @@ node tests/test_repair.js          # riparazione non-manifold (exit 1 se fallisc
 node tests/test_pdf.js             # report PDF: struttura e conteggio fori
 node tests/test_selfint.js         # auto-intersezioni: campioni chiusi = 0, due scatole sovrapposte > 0
 node tests/test_devthr.js          # deviazione filetti dal cilindro nominale (bolt_m6: ~0,63 mm)
+node tests/test_hole.js            # modifica foro: Ø 6,6 / 5 / 6,8 / 4,2 su plate_hole, collisione, countersink
 node tests/test_selfrepair.js      # riparazione auto-intersezioni (manifold-3d): due scatole 1844,39, lontane 2000, corpo aperto lasciato
 node build.mjs                     # build single-file in dist/
 ```
@@ -155,6 +156,7 @@ Tutti devono essere `valid=True`; `check_step.py` esce con codice 1 altrimenti.
 - **Timestamp**: usare l'ora reale (`Get-Date` / `date`), mai orari stimati.
 
 ## 8. Prossimi passi (in ordine di priorità)
+Fatti il 2026-10-08 (v1.8.0): modifica foro (Ø gioco/maschiatura M2–M16, etichetta filetto, Annulla con mesh). Dal confronto col sito di riferimento resta la «Verifica STEP» nell'app (IMPROVEMENTS #20, da decidere).
 Fatti il 2026-10-07 (v1.7.0): riparazione delle auto-intersezioni tra corpi (unione booleana, manifold-3d).
 Fatti il 2026-10-07 (v1.6.0): B-spline chiuse anche per tubi incurvati (spina curva, tappi piani staccati).
 Fatti il 2026-10-07 (v1.5.1): deviazione dei filetti dal cilindro nominale (freeform = 0 per scelta).

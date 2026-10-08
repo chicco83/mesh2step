@@ -1,5 +1,5 @@
 # Mesh2STEP
-Versione: 1.7.0 — 2026-10-07 22:10
+Versione: 1.8.0 — 2026-10-08 23:35
 <!-- [2026-10-06 13:45] Versione precedente 1.0.1 (2026-10-06 13:10): README delle funzioni v1.0
      (piani, cilindri, sfere); aggiornato con tutte le funzioni v1.1–v1.3. -->
 
@@ -80,6 +80,8 @@ raggi di toro, cilindri coassiali sulla stessa retta — ogni modifica solo se l
 | **Converti / unisci** | In piano, cilindro, cono, sfera, toro, B-spline, freeform o *Automatico* con scarto massimo scelto |
 | **Annulla** | 20 livelli |
 | **Corpi** | Includi/escludi e rinomina; il nome va nello STEP |
+| **Modifica foro** | Cambia il Ø di un foro cilindrico o filetto interno: gioco / maschiatura M2–M16, etichetta filetto, Ø libero; controllo collisioni; Annulla ripristina la mesh |
+
 
 ### Risultati e report
 | Funzione | Dettagli |

@@ -1,5 +1,16 @@
 # CHANGELOG — Mesh2STEP
-Versione documento: 1.7.0 — 2026-10-07 22:10
+Versione documento: 1.8.0 — 2026-10-08 23:35
+
+## 16. [1.8.0] — 2026-10-08 23:35 — Modifica foro (diametro, M2–M16)
+Ispirata alla funzione «Modifica dei fori» del sito di riferimento (solo l'idea: implementazione propria, clean-room).
+- **Pannello «Modifica foro»** (nella sezione Modifica facce, compare selezionando un foro cilindrico o un filetto interno): modo *Foro di gioco* (ISO 273 serie media: M6 → Ø6,6), *Foro di maschiatura* (M6 → Ø5), *Filettatura* (maschiatura + etichetta `THREAD Mx` sulla faccia STEP; **non** elica reale) o *Diametro libero*; misure M2–M16; anteprima «Ø attuale → nuovo Ø».
+- Core: `resizeHole(M, seg, id, mode, size, dia)`, `holeTarget`, `HOLE_SIZES`. I vertici del foro vengono spostati radialmente (i piani ⟂ asse restano piani), la mesh è ricostruita con lo stesso ordine dei triangoli e si rifittano il foro (cilindro esatto) e le regioni vicine toccate (coni di svasatura ecc., altrimenti sfaccettate). Le altre regioni, e le modifiche manuali già fatte, restano.
+- Controlli: errore `err.holeCollision` se un triangolo vicino si ribalta (foro oltre il materiale), se aumentano le auto-intersezioni o cambia il numero di triangoli/corpi; `err.notHole` se la faccia non è un foro.
+- Worker: comando `hole {region, mode, size, dia}` (non `id`: è l'id della richiesta); **Annulla** ripristina anche la mesh precedente (la cronologia ora contiene voci `{hole, seg, M}`).
+- **Bug corretto** in `editRegions`: rinumerare gli id mutava le regioni dello stato precedente (compromettendo Annulla); ora le regioni sono copiate.
+- Test: `tests/test_hole.js` (plate_hole → Ø6,6 / 5 / 6,8 / 4,2 con 6 piani + 1 cilindro e volume atteso, collisione, countersink con cono rifittato) e STEP `plate_hole_*.step`, `countersink_tap.step` `valid=True` con OpenCASCADE; in CI. Provato nel browser (Playwright): selezione foro, applica, Annulla, console pulita.
+- Limiti: non genera filetti elicoidali; il foro vicino a bordi sottili può essere rifiutato; i campioni non hanno ancora un caso di foro cieco con punta conica.
+- Rollback: `git revert` del commit.
 
 ## 15. [1.7.0] — 2026-10-07 22:10 — Riparazione delle auto-intersezioni (unione booleana)
 - **Pulsante «Ripara auto-intersezioni (unisci i corpi)»**, visibile quando il rilevamento (1.5.0) trova coppie di triangoli che si tagliano.

@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — worker.js
- * Versione: 1.7.0 — 2026-10-07 22:10 (Europe/Rome)
+ * Versione: 1.8.0 — 2026-10-08 23:30 (Europe/Rome)
  * Versione precedente archiviata in archive/worker_v1.0.0_20261005-1710.js (2026-10-06: riscrittura
  * per editing, riparazione, export STL/OBJ, deviazione, corpi).
  *
@@ -11,7 +11,8 @@
  *   repairSelf {}                  -> {positions, info, ok, reason, before, after, merged, kept}  unione booleana dei corpi sovrapposti [v1.7.0]
  *   analyse {opts}                 -> risultato analisi (vedi result())
  *   edit    {ids, as, maxErr}      -> risultato analisi aggiornato      (unione/conversione facce)
- *   undo    {}                     -> risultato analisi precedente
+ *   hole    {region, mode, size, dia}  -> risultato analisi + {positions, info, diameter, label}  modifica del diametro di un foro [v1.8.0]
+ *   undo    {}                     -> risultato analisi precedente (+ positions/info se l'ultima modifica era un foro)
  *   step    {opts:{tol, bodies, threadCyl}}   -> {text, ...}
  *   pdf     {L, lang}              -> {buf: PDF}  [v1.4.0]
  *   stl     {}                     -> {buf}   STL binario della mesh corrente
@@ -44,7 +45,7 @@ const history = [];   // stati precedenti di seg per "Annulla" (max 20)
 function regionSummary(r) {
   let area = 0; for (const t of r.tris) area += M.A[t];
   const o = { id: r.id, type: r.type, nTris: r.tris.length, area, err: r.err || 0, snapped: !!r.snapped, manual: !!r.manual };
-  if (r.type === 'cylinder') Object.assign(o, { radius: r.radius, axis: r.axis, origin: r.origin, height: r.height, hole: !r.outward });
+  if (r.type === 'cylinder') Object.assign(o, { radius: r.radius, axis: r.axis, origin: r.origin, height: r.height, hole: !r.outward, threadLabel: r.threadLabel });
   if (r.type === 'sphere') Object.assign(o, { radius: r.radius, center: r.center, hole: !r.outward });
   if (r.type === 'plane') Object.assign(o, { normal: r.normal });
   if (r.type === 'cone') Object.assign(o, { alpha: r.alpha, axis: r.axis, apex: r.apex, hole: !r.outward });
@@ -120,11 +121,21 @@ self.onmessage = async ({ data }) => {
       seg = next;
       const { msg, transfer } = result({ selected: next.newId });
       reply(msg, transfer);
+    } else if (cmd === 'hole') {   // [v1.8.0] cambia il diametro di un foro: la mesh cambia, quindi Annulla ripristina anche M
+      const r = M2S.resizeHole(M, seg, data.region, data.mode, data.size, data.dia);
+      history.push({ hole: true, seg, M }); if (history.length > 20) history.shift();
+      M = r.M; seg = { face: r.seg.face, regions: r.seg.regions, opts: r.seg.opts };
+      const { pos, info } = meshPayload();
+      const { msg, transfer } = result({ positions: pos, info, diameter: r.diameter, label: r.label, selected: r.newId, canUndo: true });
+      reply(msg, transfer.concat([pos.buffer]));
     } else if (cmd === 'undo') {
       if (!history.length) throw new Error('err.noUndo');
-      seg = history.pop();
-      const { msg, transfer } = result({ canUndo: history.length > 0 });
-      reply(msg, transfer);
+      // [2026-10-08 v1.8.0] prima: seg = history.pop();  (le voci 'hole' portano anche la mesh precedente)
+      const h = history.pop(); let extra = { canUndo: history.length > 0 }, tr = [];
+      if (h.hole) { M = h.M; seg = h.seg; const { pos, info } = meshPayload(); extra = Object.assign(extra, { positions: pos, info }); tr = [pos.buffer]; }
+      else seg = h;
+      const { msg, transfer } = result(extra);
+      reply(msg, transfer.concat(tr));
     } else if (cmd === 'step') {
       const r = M2S.exportSTEP(M, seg, { name: lastName, tol: data.opts.tol, bodies: data.opts.bodies, threadCyl: data.opts.threadCyl });
       reply({ text: r.text, faces: r.faces, edges: r.edges, solids: r.solids, surfaces: r.surfaces, name: lastName });

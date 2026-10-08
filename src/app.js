@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — app.js
- * Versione: 1.7.0 — 2026-10-07 22:10 (Europe/Rome)
+ * Versione: 1.8.0 — 2026-10-08 23:30 (Europe/Rome)
  * Versione precedente archiviata: archive/app_v1.0.1_20261006-1310.js
  * (2026-10-06: riscritta per editing facce, corpi, report CSV, export STL/OBJ, heatmap deviazione,
  *  viste, IT/EN, tema chiaro, condivisione, PWA e API di integrazione).
@@ -14,7 +14,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 // [2026-10-07 v1.5.1] const VERSION = '1.5.0';
 // [2026-10-07 v1.6.0] const VERSION = '1.5.1';
 // [2026-10-07 v1.7.0] const VERSION = '1.6.0';
-const VERSION = '1.7.0';
+// [2026-10-08 v1.8.0] const VERSION = '1.7.0';
+const VERSION = '1.8.0';
 const $ = id => document.getElementById(id);
 const store = { get: k => { try { return localStorage.getItem('m2s.' + k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem('m2s.' + k, v); } catch { /* storage non disponibile */ } } };
 
@@ -44,6 +45,9 @@ const DICT = {
     hole: 'foro', snapped: 'arrotondato', manual: 'manuale', hand_R: 'destro', hand_L: 'sinistro', internal: 'interno', external: 'esterno',
     h_holes: 'Fori', h_dia: 'Ø mm', h_depth: 'Prof.', h_n: 'n.', through: 'passante', blind: 'cieco', shafts: 'Alberi/raccordi', h_threads: 'Filettature',
     b_name: 'Nome', b_closed: 'chiuso', b_open: 'aperto',
+    hole_title: 'Modifica foro', hole_hint: 'Cambia il diametro del foro selezionato (la mesh viene modificata; si può annullare).', hm_clear: 'Foro di gioco', hm_tap: 'Foro di maschiatura', hm_thread: 'Filettatura (maschiatura + etichetta)', hm_dia: 'Diametro libero', hole_apply: 'Applica al foro',
+    hole_prev: 'Ø attuale {a} mm → nuovo Ø {b} mm', hole_done: 'Foro modificato: Ø {d} mm{l}.', k_label: 'Etichetta',
+    'err.notHole': 'la faccia selezionata non è un foro', 'err.holeSize': 'misura del foro non valida', 'err.holeMode': 'modo non valido', 'err.holeCollision': 'il nuovo diametro urta altre facce (troppo grande per il materiale intorno)',
     csv_head: 'tipo;diametro_mm;profondita_mm;passante;asse_x;asse_y;asse_z;pos_x;pos_y;pos_z;note',
   },
   en: {
@@ -70,6 +74,9 @@ const DICT = {
     hole: 'hole', snapped: 'rounded', manual: 'manual', hand_R: 'right', hand_L: 'left', internal: 'internal', external: 'external',
     h_holes: 'Holes', h_dia: 'Ø mm', h_depth: 'Depth', h_n: 'no.', through: 'through', blind: 'blind', shafts: 'Shafts/fillets', h_threads: 'Threads',
     b_name: 'Name', b_closed: 'closed', b_open: 'open',
+    hole_title: 'Edit hole', hole_hint: 'Changes the diameter of the selected hole (the mesh is modified; can be undone).', hm_clear: 'Clearance hole', hm_tap: 'Tap drill hole', hm_thread: 'Thread (tap drill + label)', hm_dia: 'Free diameter', hole_apply: 'Apply to hole',
+    hole_prev: 'Current Ø {a} mm → new Ø {b} mm', hole_done: 'Hole changed: Ø {d} mm{l}.', k_label: 'Label',
+    'err.notHole': 'the selected face is not a hole', 'err.holeSize': 'invalid hole size', 'err.holeMode': 'invalid mode', 'err.holeCollision': 'the new diameter hits other faces (too large for the surrounding material)',
     csv_head: 'type,diameter_mm,depth_mm,through,axis_x,axis_y,axis_z,pos_x,pos_y,pos_z,note',
   },
 };
@@ -218,6 +225,7 @@ function updateSel() {
   $('apply').disabled = !ids.length;
   $('selinfo').textContent = ids.length ? t('sel_n', { n: ids.length, t: ids.reduce((s, i) => s + res.regions[i].nTris, 0) }) : '';
   if (ids.length === 1) showPick(res.regions[ids[0]]); else $('pick').hidden = true;
+  updateHoleBox();   // [v1.8.0]
 }
 function showPick(r) {
   const v3 = (v, d = 3) => v.map(x => fmt(x, d)).join(' ; ');
@@ -230,6 +238,7 @@ function showPick(r) {
   if (r.type === 'torus') rows.push([t('k_R'), fmt(r.R) + ' mm'], [t('k_r'), 'R ' + fmt(r.r) + ' mm'], [t('k_axis'), v3(r.axis)]);
   if (r.type === 'thread') rows.push([t('t_thread'), r.label + ' ' + t(r.internal ? 'internal' : 'external')], [t('k_pitch'), fmt(r.pitch, 2) + ' mm'], [t('k_hand'), t('hand_' + r.hand)], [t('k_major'), fmt(r.major, 2)], [t('k_minor'), fmt(r.minor, 2)], [t('k_len'), fmt(r.length, 2) + ' mm']);
   if (r.type === 'bspline') rows.push([t('k_ctrl'), r.nc + ' × ' + (r.nv || r.nc) + (r.closedU ? ' ' + t('closed_u') : '')]);   // [v1.5.0] prima: r.nc + ' × ' + r.nc
+  if (r.threadLabel) rows.push([t('k_label'), r.threadLabel]);   // [v1.8.0]
   if (r.type !== 'freeform' && r.type !== 'thread') rows.push([t('k_err'), fmt(r.err, 4) + ' mm']);
   $('pick').innerHTML = '<dl class="kv">' + rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('') + '</dl>';
   $('pick').hidden = false;
@@ -354,8 +363,38 @@ $('apply').onclick = async () => {
     onResult(r); $('undo').disabled = false; status(t('edited'));
   } catch (e) { status(t('err') + errText(e), 'err'); } finally { busy(false); }
 };
+// ---- [v1.8.0] Modifica foro ----
+// Tabella come M2S.HOLE_SIZES nel core: [M, Ø gioco (ISO 273 media), Ø maschiatura]. «Filettatura» = foro di maschiatura + etichetta sulla faccia (non elicoidale).
+const HOLE_SIZES = [[2, 2.4, 1.6], [2.5, 2.9, 2.05], [3, 3.4, 2.5], [4, 4.5, 3.3], [5, 5.5, 4.2], [6, 6.6, 5], [8, 9, 6.8], [10, 11, 8.5], [12, 13.5, 10.2], [14, 15.5, 12], [16, 17.5, 14]];
+$('hsize').innerHTML = HOLE_SIZES.map(x => `<option value="${x[0]}">M${x[0]}</option>`).join('');
+$('hsize').value = '6';
+function holeTargetDia() {
+  const m = $('hmode').value, row = HOLE_SIZES.find(x => x[0] === +$('hsize').value);
+  return m === 'diameter' ? +$('hdia').value : m === 'clearance' ? row[1] : row[2];
+}
+function selectedHole() {
+  if (sel.size !== 1 || !res) return null;
+  const r = res.regions[[...sel][0]];
+  return r && ((r.type === 'cylinder' && r.hole) || (r.type === 'thread' && r.internal)) ? r : null;
+}
+function updateHoleBox() {
+  const r = selectedHole(); $('holebox').hidden = !r; if (!r) return;
+  const free = $('hmode').value === 'diameter'; $('hdia').hidden = !free; $('hsize').hidden = free;
+  $('hpreview').textContent = t('hole_prev', { a: fmt(r.type === 'thread' ? r.minor : 2 * r.radius, 2), b: fmt(holeTargetDia(), 2) });
+}
+['hmode', 'hsize', 'hdia'].forEach(id => { $(id).oninput = updateHoleBox; });
+$('holeapply').onclick = async () => {
+  const r = selectedHole(); if (!r) return;
+  try {
+    busy(true);
+    const x = await call({ cmd: 'hole', region: r.id, mode: $('hmode').value, size: +$('hsize').value, dia: +$('hdia').value });
+    info = x.info; showMesh(x.positions); showInfo(); onResult(x); $('undo').disabled = false;
+    status(t('hole_done', { d: fmt(x.diameter, 2), l: x.label ? ' · ' + x.label : '' }));
+  } catch (e) { status(t('err') + errText(e), 'err'); } finally { busy(false); }
+};
 $('undo').onclick = async () => {
-  try { busy(true); const r = await call({ cmd: 'undo' }); onResult(r); $('undo').disabled = !r.canUndo; status(t('undone')); }
+  // [2026-10-08 v1.8.0] prima: try { busy(true); const r = await call({ cmd: 'undo' }); onResult(r); ...  (annullare un foro ripristina anche la mesh)
+  try { busy(true); const r = await call({ cmd: 'undo' }); if (r.positions) { info = r.info; showMesh(r.positions); showInfo(); } onResult(r); $('undo').disabled = !r.canUndo; status(t('undone')); }
   catch (e) { status(t('err') + errText(e), 'err'); } finally { busy(false); }
 };
 

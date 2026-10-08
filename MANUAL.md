@@ -1,5 +1,5 @@
 # MANUALE — Mesh2STEP
-Versione documento: 1.7.0 — 2026-10-07 22:10
+Versione documento: 1.8.0 — 2026-10-08 23:35
 <!-- [2026-10-06 13:45] versione precedente 1.0.0 (2026-10-05 17:10) nel repository git (commit 729f9ed). -->
 
 ## 1. Avvio
@@ -54,6 +54,12 @@ Il colore dipende **solo dal tipo** di superficie (dalla 1.3.1): facce vicine de
 - **Scarto max accettato**: default 5 × tolleranza.
 - Le facce unite devono essere contigue.
 - **Annulla ultima modifica**: fino a 20 passi. Una nuova analisi azzera la cronologia.
+
+### Modifica foro (dalla 1.8.0)
+- Seleziona un foro (cilindro «foro» o filetto interno): compare il pannello **Modifica foro**.
+- Modo: *Foro di gioco* (M2–M16, serie media ISO 273), *Foro di maschiatura*, *Filettatura* (maschiatura + etichetta `THREAD Mx` sulla faccia STEP, senza elica) o *Diametro libero*. L'anteprima mostra «Ø attuale → nuovo Ø».
+- **Applica al foro** modifica la mesh (i piani restano piani, le regioni vicine si rifittano); **Annulla ultima modifica** ripristina anche la mesh.
+- Se il nuovo diametro urta altre facce compare l'errore «troppo grande per il materiale intorno» e nulla cambia.
 
 ## 6. Corpi
 - Compare con più corpi o con nomi presi dal file (3MF `name`, OBJ `o`/`g`, STL ASCII `solid`).

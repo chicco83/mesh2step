@@ -1,7 +1,7 @@
 <!doctype html>
 <!--
   Mesh2STEP — index.html
-  Versione: 1.7.0 — 2026-10-07 22:10 (Europe/Rome)
+  Versione: 1.8.0 — 2026-10-08 23:30 (Europe/Rome)
   Versione precedente archiviata: archive/index_v1.0.1_20261006-1310.html
   (2026-10-06: nuova UI con editing facce, corpi, report, export STL/OBJ, deviazione, viste, IT/EN,
    tema chiaro, PWA offline con three.js locale in vendor/).
@@ -183,6 +183,23 @@
       <button id="apply" disabled data-i18n="apply">Applica</button>
     </div>
     <div class="row"><span data-i18n="maxerr">Scarto max accettato (mm)</span><input id="maxerr" type="number" min="0.001" step="0.01" value="0.1"></div>
+    <!-- [v1.8.0] Modifica foro -->
+    <div id="holebox" hidden>
+      <h3 data-i18n="hole_title">Modifica foro</h3>
+      <div class="hint" data-i18n="hole_hint">Cambia il diametro del foro selezionato (la mesh viene modificata; si può annullare).</div>
+      <div class="row">
+        <select id="hmode">
+          <option value="clearance" data-i18n="hm_clear">Foro di gioco</option>
+          <option value="tap" data-i18n="hm_tap">Foro di maschiatura</option>
+          <option value="thread" data-i18n="hm_thread">Filettatura (maschiatura + etichetta)</option>
+          <option value="diameter" data-i18n="hm_dia">Diametro libero</option>
+        </select>
+        <select id="hsize"></select>
+        <input id="hdia" type="number" min="0.2" step="0.1" value="5" hidden>
+        <button id="holeapply" data-i18n="hole_apply">Applica al foro</button>
+      </div>
+      <div id="hpreview" class="hint"></div>
+    </div>
     <button id="undo" class="ghost" disabled data-i18n="undo">Annulla ultima modifica</button>
   </section>
 

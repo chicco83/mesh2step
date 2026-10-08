@@ -34,6 +34,8 @@ jobs:
         run: node tests/test_devthr.js
       - name: Riparazione auto-intersezioni
         run: node tests/test_selfrepair.js
+      - name: Modifica foro
+        run: node tests/test_hole.js
       - name: Build single-file
         run: node build.mjs
       - uses: actions/upload-artifact@v4

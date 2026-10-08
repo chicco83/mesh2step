@@ -1,5 +1,5 @@
 # CONTEXT — Mesh2STEP
-Versione documento: 1.7.0 — 2026-10-07 22:10
+Versione documento: 1.8.0 — 2026-10-08 23:35
 
 ## Scopo
 Web app che converte mesh triangolari (STL, OBJ, 3MF) in file STEP con **geometria CAD reale**:
@@ -85,9 +85,11 @@ index.html ── src/app.js (UI, viewer three.js, i18n, editing, export, API in
 | 2026-10-05 | Cowork cloud | Analisi del sito di riferimento, v1.0.0 (piani, cilindri, sfere, STEP), commit `729f9ed` caricato dall'utente |
 | 2026-10-06 mattina | Cowork cloud | v1.0.1 README completo; v1.1.0–1.3.0 tutte le migliorie (commit `e1e10bb`, `61c8f81`), consegnate come git bundle perché la sessione non poteva fare push; pubblicate dall'utente; Pages verificato online |
 | 2026-10-06 14:10 | Cowork cloud | Documentazione per riprendere il lavoro da Claude Code |
+| 2026-10-08 | Claude Code (cloud) | v1.8.0: confronto con il sito di riferimento (nuove funzioni: modifica fori, verifica STEP); implementata la **modifica foro** (`resizeHole`, comando Worker `hole`, Annulla con mesh); corretto bug di mutazione in `editRegions` |
 | 2026-10-07 | Claude Code (locale) | v1.3.1–1.3.2: colori per tipo, selezione, deviazione B-spline, fix CI, prova UI nel browser integrato. v1.4.0: filettature→cilindro, sfere spurie, sfera/toro completi, non-manifold, report PDF. v1.4.1: primo avvio reale dell'exe su Windows 11 (bug risorse con backslash corretto) |
 
 ## Problemi aperti
+- Modifica foro (1.8.0): la «filettatura» è foro di maschiatura + etichetta, non elica; da valutare un campione con foro cieco/punta conica e la «Verifica STEP» nell'app (IMPROVEMENTS #20).
 - App Windows: da provare «Apri con…»/trascinamento sull'exe e l'avvio su un PC senza runtime WebView2.
 - Pulsante «Converti in STEP»: fatto nel repo 3D STL Multipart Maker v0.6.2-beta (2026-10-07), non provato dalla versione Windows di quel programma.
 - Auto-intersezioni dentro un solo guscio non riparate (tra corpi sì, 1.7.0).

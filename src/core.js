@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — core.js
- * Versione: 1.7.0 — 2026-10-07 22:10 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
+ * Versione: 1.8.0 — 2026-10-08 23:30 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
  * ---------------------------------------------------------------------------
  * Motore indipendente dalla UI (gira nel Web Worker del browser e in Node per i test).
  *   1. Parsing  : STL (binario/ASCII), OBJ, 3MF (zip letto a mano + DecompressionStream)
@@ -16,7 +16,8 @@
   // [2026-10-07 v1.5.1] const VERSION = '1.5.0';
   // [2026-10-07 v1.6.0] const VERSION = '1.5.1';
   // [2026-10-07 v1.7.0] const VERSION = '1.6.0';
-  const VERSION = '1.7.0';
+  // [2026-10-08 v1.8.0] const VERSION = '1.7.0';
+  const VERSION = '1.8.0';
 
   // ===================== Helper vettoriali (array [x,y,z]) =====================
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -1589,11 +1590,69 @@
     } else { reg = tryFit(as); if (reg) bestErr = reg.err; if (reg && reg.err > maxErr) reg = null; }
     if (!reg) { const e = new Error('err.fit'); e.best = bestErr; throw e; }
     // nuova lista regioni: rimuove le unite, aggiunge la nuova in coda, rinumera
-    const regions = seg.regions.filter(r => !set.has(r.id));
+    // [2026-10-08 v1.8.0] prima: const regions = seg.regions.filter(r => !set.has(r.id));  (rinumerare gli id mutava le regioni dello stato precedente: Annulla/resizeHole)
+    const regions = seg.regions.filter(r => !set.has(r.id)).map(r => Object.assign({}, r));
     reg.tris = tris; reg.manual = true; regions.push(reg);
     regions.forEach((r, i) => { r.id = i; });
     const face = new Int32Array(M.nT); regions.forEach(r => { for (const t of r.tris) face[t] = r.id; });
     return { face, regions, stats: regionStats(regions), newId: reg.id };
+  }
+
+  // ---- [v1.8.0] Modifica foro: nuovo diametro per un foro cilindrico (o filetto interno) ----
+  // Tabella M2–M16: [Ø nominale, passo, foro di gioco (ISO 273 serie media), foro di maschiatura]
+  const HOLE_SIZES = [[2, 0.4, 2.4, 1.6], [2.5, 0.45, 2.9, 2.05], [3, 0.5, 3.4, 2.5], [4, 0.7, 4.5, 3.3], [5, 0.8, 5.5, 4.2], [6, 1, 6.6, 5], [8, 1.25, 9, 6.8],
+    [10, 1.5, 11, 8.5], [12, 1.75, 13.5, 10.2], [14, 2, 15.5, 12], [16, 2, 17.5, 14]];
+  // mode: 'clearance' (gioco), 'tap' (maschiatura), 'thread' (maschiatura + etichetta «THREAD Mx» sulla faccia: filettatura NON elicoidale), 'diameter' (valore libero)
+  function holeTarget(mode, size, dia) {
+    if (mode === 'diameter') return { dia, label: null };
+    const row = HOLE_SIZES.find(x => x[0] === size); if (!row) throw new Error('err.holeSize');
+    if (mode === 'clearance') return { dia: row[2], label: null };
+    if (mode === 'tap') return { dia: row[3], label: null };
+    if (mode === 'thread') return { dia: row[3], label: 'M' + size };
+    throw new Error('err.holeMode');
+  }
+  // Sposta radialmente i vertici del foro sul nuovo raggio (i piani ⟂ asse restano piani), ricostruisce la mesh (stesso ordine dei triangoli)
+  // e rifitta le regioni toccate: il foro come cilindro esatto, i vicini (coni, ecc.) con il proprio tipo, altrimenti sfaccettati.
+  function resizeHole(M, seg, id, mode, size, dia) {
+    const r = seg.regions[id];
+    if (!r || !((r.type === 'cylinder' && !r.outward) || (r.type === 'thread' && r.internal))) throw new Error('err.notHole');
+    const { dia: D, label } = holeTarget(mode, size, dia), R = D / 2;
+    if (!(R > 0.05)) throw new Error('err.holeSize');
+    const a = r.axis, o = r.origin, P = i => M.P(i), moved = new Uint8Array(M.nV), np = new Map();
+    for (const t of r.tris) for (let k = 0; k < 3; k++) {
+      const v = M.T[3 * t + k]; if (moved[v]) continue;
+      const d = sub(P(v), o), h = dot(d, a), q = sub(d, mul(a, h)), l = len(q); if (l < 1e-9) throw new Error('err.holeSize');
+      np.set(v, add(o, add(mul(a, h), mul(q, R / l)))); moved[v] = 1;
+    }
+    const soup = new Float32Array(M.nT * 9);
+    for (let t = 0; t < M.nT; t++) for (let k = 0; k < 3; k++) { const v = M.T[3 * t + k]; soup.set(np.get(v) || P(v), t * 9 + k * 3); }
+    if (M.triName) { soup.triName = M.triName; soup.names = M.names; }
+    const M2 = buildMesh(soup);
+    if (M2.nT !== M.nT) throw new Error('err.holeCollision');
+    // triangoli vicini ribaltati (rim che esce dal contorno, raggio oltre il materiale) = collisione
+    const own = new Set(r.tris);
+    for (let t = 0; t < M.nT; t++) {
+      if (own.has(t) || !(moved[M.T[3 * t]] || moved[M.T[3 * t + 1]] || moved[M.T[3 * t + 2]])) continue;
+      if (M.N[3 * t] * M2.N[3 * t] + M.N[3 * t + 1] * M2.N[3 * t + 1] + M.N[3 * t + 2] * M2.N[3 * t + 2] < 0.5) throw new Error('err.holeCollision');
+    }
+    if (M2.nComp !== M.nComp || findSelfIntersections(M2).count > findSelfIntersections(M).count) throw new Error('err.holeCollision');
+    // regioni da rifittare: il foro + quelle che toccano vertici spostati (esclusi i piani ⟂ asse, che restano esatti)
+    const reps = [{ t: r.tris[0], as: 'cylinder' }];
+    for (const q of seg.regions) {
+      if (q.id === id || !q.tris.some(t => moved[M.T[3 * t]] || moved[M.T[3 * t + 1]] || moved[M.T[3 * t + 2]])) continue;
+      if (q.type === 'plane' && Math.abs(dot(q.normal, a)) > Math.cos(0.5 * Math.PI / 180)) continue;
+      reps.push({ t: q.tris[0], as: ['plane', 'cylinder', 'cone', 'sphere', 'torus'].includes(q.type) ? q.type : 'freeform' });
+    }
+    let cur = { face: Int32Array.from(seg.face), regions: seg.regions }, holeRep = reps[0].t;
+    for (const rp of reps) {
+      const rid = cur.face[rp.t];
+      let e; try { e = editRegions(M2, cur, [rid], rp.as, Infinity); } catch (x) { e = editRegions(M2, cur, [rid], 'freeform', Infinity); }
+      cur = { face: e.face, regions: e.regions };
+    }
+    const hole = cur.regions[cur.face[holeRep]];
+    if (hole.type !== 'cylinder') throw new Error('err.fit');
+    if (label) hole.threadLabel = label;
+    return { M: M2, seg: Object.assign({}, seg, { face: cur.face, regions: cur.regions }), diameter: 2 * hole.radius, label, newId: hole.id };
   }
 
   // ---- Caratteristiche: fori passanti/ciechi, profondità; corpi ----
@@ -2041,7 +2100,7 @@
     return { M, seg };
   }
 
-  const API = { VERSION, parseFile, parseSTL, parseOBJ, parse3MF, buildMesh, segment, exportSTEP, analyse, fitCylinder, fitSphere, fitPlane, fitCone, fitTorus, fitBSpline, detectThread, threadsToCylinders, fixNonManifold, findSelfIntersections, repairSelfIntersections, fitBSplineClosed, reportPdf, fillHoles, features, deviation, surfDist, editRegions, regionStats };
+  const API = { VERSION, parseFile, parseSTL, parseOBJ, parse3MF, buildMesh, segment, exportSTEP, analyse, fitCylinder, fitSphere, fitPlane, fitCone, fitTorus, fitBSpline, detectThread, threadsToCylinders, fixNonManifold, findSelfIntersections, repairSelfIntersections, fitBSplineClosed, reportPdf, fillHoles, features, deviation, surfDist, editRegions, regionStats, resizeHole, holeTarget, HOLE_SIZES };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   else root.M2S = API;
 })(typeof self !== 'undefined' ? self : this);
