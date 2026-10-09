@@ -1,5 +1,5 @@
 # MANUALE — Mesh2STEP
-Versione documento: 1.8.0 — 2026-10-08 23:35
+Versione documento: 1.9.0 — 2026-10-09 09:53
 <!-- [2026-10-06 13:45] versione precedente 1.0.0 (2026-10-05 17:10) nel repository git (commit 729f9ed). -->
 
 ## 1. Avvio
@@ -54,6 +54,10 @@ Il colore dipende **solo dal tipo** di superficie (dalla 1.3.1): facce vicine de
 - **Scarto max accettato**: default 5 × tolleranza.
 - Le facce unite devono essere contigue.
 - **Annulla ultima modifica**: fino a 20 passi. Una nuova analisi azzera la cronologia.
+
+### Verifica STEP (dalla 1.9.0)
+- **Verifica STEP** (sezione Export) genera lo STEP con le opzioni correnti e controlla struttura, riferimenti, anelli chiusi e spigoli accoppiati. Esito nella barra di stato; problemi e avvisi (es. bordo aperto di una superficie) nel riquadro sotto il pulsante.
+- È un controllo leggero: per la validità completa usa `python3 tests/check_step.py` (OpenCASCADE) o apri il file in un CAD.
 
 ### Modifica foro (dalla 1.8.0)
 - Seleziona un foro (cilindro «foro» o filetto interno): compare il pannello **Modifica foro**.

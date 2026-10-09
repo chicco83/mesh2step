@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — worker.js
- * Versione: 1.8.0 — 2026-10-08 23:30 (Europe/Rome)
+ * Versione: 1.9.0 — 2026-10-09 09:53 (Europe/Rome)
  * Versione precedente archiviata in archive/worker_v1.0.0_20261005-1710.js (2026-10-06: riscrittura
  * per editing, riparazione, export STL/OBJ, deviazione, corpi).
  *
@@ -14,6 +14,7 @@
  *   hole    {region, mode, size, dia}  -> risultato analisi + {positions, info, diameter, label}  modifica del diametro di un foro [v1.8.0]
  *   undo    {}                     -> risultato analisi precedente (+ positions/info se l'ultima modifica era un foro)
  *   step    {opts:{tol, bodies, threadCyl}}   -> {text, ...}
+ *   verify  {opts}                 -> {report, faces, edges, solids, surfaces, name}  esporta lo STEP e ne controlla struttura e topologia [v1.9.0]
  *   pdf     {L, lang}              -> {buf: PDF}  [v1.4.0]
  *   stl     {}                     -> {buf}   STL binario della mesh corrente
  *   obj     {}                     -> {text}  OBJ con un gruppo per faccia riconosciuta
@@ -139,6 +140,9 @@ self.onmessage = async ({ data }) => {
     } else if (cmd === 'step') {
       const r = M2S.exportSTEP(M, seg, { name: lastName, tol: data.opts.tol, bodies: data.opts.bodies, threadCyl: data.opts.threadCyl });
       reply({ text: r.text, faces: r.faces, edges: r.edges, solids: r.solids, surfaces: r.surfaces, name: lastName });
+    } else if (cmd === 'verify') {   // [v1.9.0] Verifica STEP: stessa esportazione di 'step', poi M2S.verifyStep sul testo
+      const r = M2S.exportSTEP(M, seg, { name: lastName, tol: data.opts.tol, bodies: data.opts.bodies, threadCyl: data.opts.threadCyl });
+      reply({ report: M2S.verifyStep(r.text), faces: r.faces, edges: r.edges, solids: r.solids, surfaces: r.surfaces, name: lastName });
     } else if (cmd === 'pdf') {   // [v1.4.0] report PDF con disegno quotato dei fori
       const r = M2S.reportPdf(M, seg, { name: lastName, L: data.L, lang: data.lang });
       reply({ buf: r.bytes.buffer, name: lastName }, [r.bytes.buffer]);

@@ -1,5 +1,5 @@
 # Mesh2STEP
-Versione: 1.8.0 — 2026-10-08 23:35
+Versione: 1.9.0 — 2026-10-09 09:53
 <!-- [2026-10-06 13:45] Versione precedente 1.0.1 (2026-10-06 13:10): README delle funzioni v1.0
      (piani, cilindri, sfere); aggiornato con tutte le funzioni v1.1–v1.3. -->
 
@@ -97,6 +97,7 @@ raggi di toro, cilindri coassiali sulla stessa retta — ogni modifica solo se l
 | Formato | Dettagli |
 |---|---|
 | **STEP AP214** | `PLANE`, `CYLINDRICAL_SURFACE`, `CONICAL_SURFACE`, `SPHERICAL_SURFACE`, `TOROIDAL_SURFACE`, `B_SPLINE_SURFACE_WITH_KNOTS`; spigoli `LINE`, `CIRCLE` (coerenti con cilindri/coni), B-spline lineari; un `MANIFOLD_SOLID_BREP` per corpo con il suo nome; mesh aperte come superficie; facce nominate `HOLE D…`, `SHAFT D…`, `THREAD M…` |
+| **Verifica STEP** | Pulsante che controlla lo STEP generato senza scaricarlo: intestazione, riferimenti, anelli chiusi, spigoli accoppiati nei gusci chiusi; avviso per i bordi aperti (controllo leggero, non sostituisce OpenCASCADE) |
 | **STL** | Binario, anche della mesh riparata |
 | **OBJ** | Un gruppo per faccia riconosciuta |
 | **Condividi STEP** | Web Share API (telefono) |

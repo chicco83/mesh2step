@@ -1,5 +1,14 @@
 # CHANGELOG — Mesh2STEP
-Versione documento: 1.8.0 — 2026-10-08 23:35
+Versione documento: 1.9.0 — 2026-10-09 09:53
+
+## 17. [1.9.0] — 2026-10-09 09:53 — Verifica STEP nell'app
+Ispirata alla «Verifica STEP» del sito di riferimento (solo l'idea; implementazione propria).
+- **Pulsante «Verifica STEP»** (sezione Export): esporta lo STEP con le opzioni correnti e ne controlla il testo senza scaricarlo; l'esito va nella barra di stato e in un riquadro con gli eventuali problemi.
+- Core: `verifyStep(text)` → `{ok, errors, warnings, counts, entities, dangling}`. Controlli: intestazione/chiusura/ENDSEC/DATA, id unici, riferimenti `#n` risolti, numeri finiti, anelli `EDGE_LOOP` continui e chiusi, ogni faccia con almeno un bordo, ogni `CLOSED_SHELL` con spigoli usati due volte con verso opposto (`OPEN_SHELL`: bordo aperto solo come avviso).
+- Worker: comando `verify {opts}`; messaggi `step.*` tradotti IT/EN.
+- **Limite dichiarato**: è un controllo leggero, non sostituisce OpenCASCADE (`tests/check_step.py`) né l'apertura in un CAD.
+- Test: `tests/test_verify.js` (tutti i 25 STEP di `tests/out` passano; 4 corruzioni — riferimento mancante, spigolo orientato rimosso, NaN, file troncato — vengono rilevate); in CI. Nel browser (Playwright): plate_hole ok (7 facce), open_block con avviso di bordo aperto, bolt_m6 (54 580 facce) ok, console pulita.
+- Rollback: `git revert` del commit.
 
 ## 16. [1.8.0] — 2026-10-08 23:35 — Modifica foro (diametro, M2–M16)
 Ispirata alla funzione «Modifica dei fori» del sito di riferimento (solo l'idea: implementazione propria, clean-room).

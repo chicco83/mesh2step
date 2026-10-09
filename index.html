@@ -1,7 +1,7 @@
 <!doctype html>
 <!--
   Mesh2STEP — index.html
-  Versione: 1.8.0 — 2026-10-08 23:30 (Europe/Rome)
+  Versione: 1.9.0 — 2026-10-09 09:53 (Europe/Rome)
   Versione precedente archiviata: archive/index_v1.0.1_20261006-1310.html
   (2026-10-06: nuova UI con editing facce, corpi, report, export STL/OBJ, deviazione, viste, IT/EN,
    tema chiaro, PWA offline con three.js locale in vendor/).
@@ -214,6 +214,8 @@
     <h2 data-i18n="s_export">Export</h2>
     <label class="chk"><input id="o_thrcyl" type="checkbox"> <span data-i18n="o_thrcyl">Filettature come cilindro nominale (STEP)</span></label>
     <button id="step" class="primary" disabled data-i18n="step">Scarica STEP</button>
+    <button id="verify" class="ghost" disabled data-i18n="verify">Verifica STEP</button>   <!-- [v1.9.0] -->
+    <div id="vrep" class="hint" hidden></div>
     <div class="btns">
       <button id="stl" class="ghost" disabled>STL</button>
       <button id="obj" class="ghost" disabled data-i18n="obj">OBJ (gruppi)</button>

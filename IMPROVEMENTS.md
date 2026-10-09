@@ -1,5 +1,5 @@
 # MIGLIORIE — Mesh2STEP
-Versione documento: 1.8.0 — 2026-10-08 23:35
+Versione documento: 1.9.0 — 2026-10-09 09:53
 <!-- [2026-10-06 13:45] versione precedente 1.0.0 (2026-10-05 17:10): elenco proposte tutte "da fare";
      aggiornato con lo stato di realizzazione. -->
 
@@ -27,7 +27,7 @@ Stato: ✅ fatto · 🟡 parziale · ⏸️ valutato e rinviato.
 | 17 | CI GitHub Actions | ✅ | 1.3.0 | `ci.yml` verde dal 2026-10-06 (mancavano `networkx`/`lxml`/`numpy`); dalla 1.4.0 esegue anche `test_repair.js` e `test_pdf.js` |
 | 18 | IT/EN, tema chiaro, viste | ✅ | 1.2.0 | |
 | 19 | Modifica foro (Ø, M2–M16: gioco / maschiatura / etichetta filetto) | 🟡 | 1.8.0 | Diametro cambiato con Annulla; la «filettatura» è foro di maschiatura + etichetta, **non** elica reale |
-| 20 | Verifica STEP nell'app | ⏸️ | — | Idea dal sito di riferimento; proposta: controllo leggero (facce, anelli chiusi, riferimenti) |
+| 20 | Verifica STEP nell'app | ✅ | 1.9.0 | Controllo leggero (struttura, riferimenti, anelli, spigoli accoppiati); la validità completa resta OpenCASCADE |
 
 ## Prossimi passi proposti
 <!-- [2026-10-07] elenco precedente (8 voci, 1.3.0): fatte filettature→cilindro, sfere spurie, sfera/toro completi, non-manifold, PDF -->

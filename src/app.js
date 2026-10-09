@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — app.js
- * Versione: 1.8.0 — 2026-10-08 23:30 (Europe/Rome)
+ * Versione: 1.9.0 — 2026-10-09 09:53 (Europe/Rome)
  * Versione precedente archiviata: archive/app_v1.0.1_20261006-1310.js
  * (2026-10-06: riscritta per editing facce, corpi, report CSV, export STL/OBJ, heatmap deviazione,
  *  viste, IT/EN, tema chiaro, condivisione, PWA e API di integrazione).
@@ -15,7 +15,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 // [2026-10-07 v1.6.0] const VERSION = '1.5.1';
 // [2026-10-07 v1.7.0] const VERSION = '1.6.0';
 // [2026-10-08 v1.8.0] const VERSION = '1.7.0';
-const VERSION = '1.8.0';
+// [2026-10-09 09:53 v1.9.0] const VERSION = '1.8.0';
+const VERSION = '1.9.0';
 const $ = id => document.getElementById(id);
 const store = { get: k => { try { return localStorage.getItem('m2s.' + k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem('m2s.' + k, v); } catch { /* storage non disponibile */ } } };
 
@@ -48,6 +49,10 @@ const DICT = {
     hole_title: 'Modifica foro', hole_hint: 'Cambia il diametro del foro selezionato (la mesh viene modificata; si può annullare).', hm_clear: 'Foro di gioco', hm_tap: 'Foro di maschiatura', hm_thread: 'Filettatura (maschiatura + etichetta)', hm_dia: 'Diametro libero', hole_apply: 'Applica al foro',
     hole_prev: 'Ø attuale {a} mm → nuovo Ø {b} mm', hole_done: 'Foro modificato: Ø {d} mm{l}.', k_label: 'Etichetta',
     'err.notHole': 'la faccia selezionata non è un foro', 'err.holeSize': 'misura del foro non valida', 'err.holeMode': 'modo non valido', 'err.holeCollision': 'il nuovo diametro urta altre facce (troppo grande per il materiale intorno)',
+    verify: 'Verifica STEP', v_ok: 'STEP verificato: {f} facce, {e} spigoli, {l} anelli, {s} solido/i — nessun errore.', v_okw: 'STEP verificato con avvisi: {f} facce, {e} spigoli.', v_fail: 'STEP NON valido: {n} problemi.', v_note: 'Controllo leggero (struttura, riferimenti, anelli, spigoli accoppiati). Per la validità completa apri il file in un CAD.',
+    'step.noHeader': 'manca l\'intestazione ISO-10303-21', 'step.noFooter': 'manca la chiusura END-ISO-10303-21', 'step.noEndsec': 'manca ENDSEC', 'step.noData': 'manca la sezione DATA', 'step.badNumber': 'numeri non validi (NaN/Infinity)',
+    'step.dupId': 'id duplicato', 'step.dangling': 'riferimento a entità inesistente', 'step.loopRef': 'anello con spigoli non validi', 'step.loopOpen': 'anello non chiuso', 'step.faceNoBound': 'faccia senza bordo',
+    'step.shellFace': 'guscio con faccia inesistente', 'step.shellNotClosed': 'guscio chiuso con spigoli non accoppiati', 'step.shellEdge': 'spigolo usato più di due volte', 'step.noFaces': 'nessuna faccia', 'step.openBoundary': 'bordo aperto (spigoli usati una volta)',
     csv_head: 'tipo;diametro_mm;profondita_mm;passante;asse_x;asse_y;asse_z;pos_x;pos_y;pos_z;note',
   },
   en: {
@@ -77,6 +82,10 @@ const DICT = {
     hole_title: 'Edit hole', hole_hint: 'Changes the diameter of the selected hole (the mesh is modified; can be undone).', hm_clear: 'Clearance hole', hm_tap: 'Tap drill hole', hm_thread: 'Thread (tap drill + label)', hm_dia: 'Free diameter', hole_apply: 'Apply to hole',
     hole_prev: 'Current Ø {a} mm → new Ø {b} mm', hole_done: 'Hole changed: Ø {d} mm{l}.', k_label: 'Label',
     'err.notHole': 'the selected face is not a hole', 'err.holeSize': 'invalid hole size', 'err.holeMode': 'invalid mode', 'err.holeCollision': 'the new diameter hits other faces (too large for the surrounding material)',
+    verify: 'Verify STEP', v_ok: 'STEP verified: {f} faces, {e} edges, {l} loops, {s} solid(s) — no errors.', v_okw: 'STEP verified with warnings: {f} faces, {e} edges.', v_fail: 'STEP NOT valid: {n} problems.', v_note: 'Light check (structure, references, loops, paired edges). For full validity open the file in a CAD.',
+    'step.noHeader': 'missing ISO-10303-21 header', 'step.noFooter': 'missing END-ISO-10303-21 footer', 'step.noEndsec': 'missing ENDSEC', 'step.noData': 'missing DATA section', 'step.badNumber': 'invalid numbers (NaN/Infinity)',
+    'step.dupId': 'duplicate id', 'step.dangling': 'reference to a missing entity', 'step.loopRef': 'loop with invalid edges', 'step.loopOpen': 'loop not closed', 'step.faceNoBound': 'face without bound',
+    'step.shellFace': 'shell with a missing face', 'step.shellNotClosed': 'closed shell with unpaired edges', 'step.shellEdge': 'edge used more than twice', 'step.noFaces': 'no faces', 'step.openBoundary': 'open boundary (edges used once)',
     csv_head: 'type,diameter_mm,depth_mm,through,axis_x,axis_y,axis_z,pos_x,pos_y,pos_z,note',
   },
 };
@@ -263,7 +272,7 @@ function onMesh(r) {
   bodyCfg = info.bodyList.map(b => ({ name: b.name, include: true }));
   $('results').hidden = true; $('editsec').hidden = true; $('pick').hidden = true; $('drop').style.display = 'none';   // [2026-10-06] prima: $('drop').textContent = '' (il cambio lingua lo riscriveva)
   showMesh(r.positions); showInfo(); renderBodies(info.bodyList);
-  $('analyse').disabled = false; $('step').disabled = true; $('stl').disabled = false; $('obj').disabled = false;
+  $('analyse').disabled = false; $('step').disabled = true; $('verify').disabled = true; $('vrep').hidden = true; $('stl').disabled = false; $('obj').disabled = false;
   // tolleranza suggerita: 0,01–0,2 mm in proporzione alla diagonale del pezzo
   $('tol').value = Math.min(0.2, Math.max(0.01, +(info.diag * 1e-4).toFixed(3)));
 }
@@ -311,7 +320,7 @@ function opts() {
 function onResult(r) {
   res = r; sel.clear();   // [2026-10-06 v1.3.1] prima: la faccia risultante da un'unione restava selezionata (sel.add(r.selected))
   showEdgesObj(r.edges); showResults(); updateSel();
-  $('results').hidden = false; $('editsec').hidden = false; $('step').disabled = false;
+  $('results').hidden = false; $('editsec').hidden = false; $('step').disabled = false; $('verify').disabled = false;
   try { $('share').hidden = !(navigator.canShare && navigator.canShare({ files: [new File(['x'], 'x.step')] })); } catch { $('share').hidden = true; }
 }
 async function analyse() {
@@ -412,6 +421,17 @@ async function makeStep() {
 $('step').onclick = async () => {
   try { busy(true); status(t('step_gen')); const r = await makeStep(); download(r.text, r.name + '.step', 'application/step'); }
   catch (e) { status(t('err') + errText(e), 'err'); } finally { busy(false); }
+};
+// ---- [v1.9.0] Verifica STEP ----
+const vtext = c => { const [k, ...r] = c.split(':'); return t(k) + (r.length ? ' (' + r.join(' ') + ')' : ''); };
+$('verify').onclick = async () => {
+  try {
+    busy(true); status(t('step_gen'));
+    const r = await call({ cmd: 'verify', opts: { tol: analysedTol, bodies: bodyCfg, threadCyl: $('o_thrcyl').checked } }), v = r.report;
+    const lines = v.errors.map(e => '✗ ' + vtext(e)).concat(v.warnings.map(w => '⚠ ' + vtext(w)));
+    $('vrep').innerHTML = (lines.length ? lines.map(esc).join('<br>') + '<br>' : '') + esc(t('v_note')); $('vrep').hidden = false;
+    status(!v.ok ? t('v_fail', { n: v.errors.length }) : v.warnings.length ? t('v_okw', { f: v.counts.faces, e: v.counts.edges }) : t('v_ok', { f: v.counts.faces, e: v.counts.edges, l: v.counts.loops, s: v.counts.solids }), v.ok ? (v.warnings.length ? 'warn' : '') : 'err');
+  } catch (e) { status(t('err') + errText(e), 'err'); } finally { busy(false); }
 };
 $('share').onclick = async () => {
   try {

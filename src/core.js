@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — core.js
- * Versione: 1.8.0 — 2026-10-08 23:30 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
+ * Versione: 1.9.0 — 2026-10-09 09:53 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
  * ---------------------------------------------------------------------------
  * Motore indipendente dalla UI (gira nel Web Worker del browser e in Node per i test).
  *   1. Parsing  : STL (binario/ASCII), OBJ, 3MF (zip letto a mano + DecompressionStream)
@@ -17,7 +17,8 @@
   // [2026-10-07 v1.6.0] const VERSION = '1.5.1';
   // [2026-10-07 v1.7.0] const VERSION = '1.6.0';
   // [2026-10-08 v1.8.0] const VERSION = '1.7.0';
-  const VERSION = '1.8.0';
+  // [2026-10-09 09:53 v1.9.0] const VERSION = '1.8.0';
+  const VERSION = '1.9.0';
 
   // ===================== Helper vettoriali (array [x,y,z]) =====================
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -1754,6 +1755,64 @@
     return { M: M2, seg: Object.assign({}, seg, { regions }), n: ths.length };
   }
 
+  // ---- [v1.9.0] Verifica STEP: controllo leggero del testo esportato (senza OpenCASCADE) ----
+  // Controlla: intestazione/chiusura del file, id unici, riferimenti #n risolti, numeri finiti, anelli (EDGE_LOOP) chiusi e continui,
+  // facce con almeno un anello, e per ogni CLOSED_SHELL che ogni spigolo sia usato due volte con verso opposto
+  // (OPEN_SHELL: gli spigoli usati una volta sola sono il bordo aperto, solo avviso). La validità completa resta in tests/check_step.py (OpenCASCADE).
+  function verifyStep(text) {
+    const errors = [], warnings = [], ent = new Map();
+    const err = m => { if (errors.length < 50) errors.push(m); };
+    if (!/^ISO-10303-21;/.test(text)) err('step.noHeader');
+    if (!/END-ISO-10303-21;\s*$/.test(text)) err('step.noFooter');
+    if (!/\nENDSEC;\n/.test(text)) err('step.noEndsec');
+    if (/NaN|Infinity|undefined/.test(text)) err('step.badNumber');
+    const dataAt = text.indexOf('DATA;'); if (dataAt < 0) err('step.noData');
+    for (const line of text.slice(Math.max(dataAt, 0)).split('\n')) {
+      const m = /^#(\d+)=(.*);$/.exec(line); if (!m) continue;
+      const id = +m[1]; if (ent.has(id)) err('step.dupId:#' + id);
+      const body = m[2].replace(/'(?:[^']|'')*'/g, "''");   // via i testi: possono contenere '#'
+      const k = /^([A-Z_0-9]+)\(/.exec(body);
+      ent.set(id, { name: k ? k[1] : 'COMPLEX', body, refs: (body.match(/#\d+/g) || []).map(x => +x.slice(1)) });
+    }
+    let dangling = 0;
+    for (const [id, e] of ent) for (const r of e.refs) if (!ent.has(r)) { dangling++; err(`step.dangling:#${id}->#${r}`); }
+    const of = n => [...ent].filter(([, e]) => e.name === n);
+    const counts = { faces: of('ADVANCED_FACE').length, edges: of('EDGE_CURVE').length, vertices: of('VERTEX_POINT').length, loops: of('EDGE_LOOP').length, solids: of('MANIFOLD_SOLID_BREP').length, openShells: of('OPEN_SHELL').length };
+    // spigolo: v0, v1 ; orientamento: ORIENTED_EDGE(...,#edge,.T./.F.)
+    const edgeEnds = id => { const e = ent.get(id); return e && e.name === 'EDGE_CURVE' ? e.refs.slice(0, 2) : null; };
+    const oriented = id => { const e = ent.get(id); if (!e || e.name !== 'ORIENTED_EDGE') return null; const f = !/\.F\.\)$/.test(e.body); return { edge: e.refs[0], fwd: f }; };
+    const loopOk = new Map();
+    for (const [id, e] of of('EDGE_LOOP')) {
+      const oes = e.refs.map(oriented); let ok = oes.length > 0;
+      if (oes.some(x => !x || !edgeEnds(x.edge))) { err(`step.loopRef:#${id}`); ok = false; }
+      else {
+        const se = oes.map(x => { const [a, b] = edgeEnds(x.edge); return x.fwd ? [a, b] : [b, a]; });
+        for (let i = 0; i < se.length; i++) if (se[i][1] !== se[(i + 1) % se.length][0]) { err(`step.loopOpen:#${id}`); ok = false; break; }
+      }
+      loopOk.set(id, ok);
+    }
+    const faceLoops = new Map();
+    for (const [id, e] of of('ADVANCED_FACE')) {
+      const bounds = e.refs.filter(r => ent.has(r) && /^FACE_(OUTER_)?BOUND$/.test(ent.get(r).name));
+      if (!bounds.length) err(`step.faceNoBound:#${id}`);
+      faceLoops.set(id, bounds.map(b => ent.get(b).refs[0]));
+    }
+    const checkShell = (id, e, closed) => {
+      const use = new Map();   // spigolo -> [n. versi diretti, n. versi inversi]
+      for (const f of e.refs) { if (!faceLoops.has(f)) { err(`step.shellFace:#${id}->#${f}`); continue; }
+        for (const lp of faceLoops.get(f)) { const L = ent.get(lp); if (!L) continue; for (const r of L.refs) { const o = oriented(r); if (!o) continue; const u = use.get(o.edge) || [0, 0]; u[o.fwd ? 0 : 1]++; use.set(o.edge, u); } } }
+      let bad = 0, boundary = 0;
+      for (const [, [a, b]] of use) { if (a === 1 && b === 1) continue; if (a + b === 1) boundary++; else bad++; }
+      if (closed && (bad || boundary)) err(`step.shellNotClosed:#${id}:${bad + boundary}`);
+      if (!closed && bad) err(`step.shellEdge:#${id}:${bad}`);
+      if (!closed && boundary) warnings.push(`step.openBoundary:${boundary}`);
+    };
+    for (const [id, e] of of('CLOSED_SHELL')) checkShell(id, e, true);
+    for (const [id, e] of of('OPEN_SHELL')) checkShell(id, e, false);
+    if (!counts.faces) err('step.noFaces');
+    return { ok: errors.length === 0, errors, warnings, counts, entities: ent.size, dangling };
+  }
+
   function exportSTEP(M, seg, opts = {}) {
     if (opts.threadCyl) ({ M, seg } = threadsToCylinders(M, seg));   // [v1.4.0]
     const name = opts.name || 'mesh2step', tol = Math.max(opts.tol || 0.01, 1e-4);
@@ -2100,7 +2159,7 @@
     return { M, seg };
   }
 
-  const API = { VERSION, parseFile, parseSTL, parseOBJ, parse3MF, buildMesh, segment, exportSTEP, analyse, fitCylinder, fitSphere, fitPlane, fitCone, fitTorus, fitBSpline, detectThread, threadsToCylinders, fixNonManifold, findSelfIntersections, repairSelfIntersections, fitBSplineClosed, reportPdf, fillHoles, features, deviation, surfDist, editRegions, regionStats, resizeHole, holeTarget, HOLE_SIZES };
+  const API = { VERSION, parseFile, parseSTL, parseOBJ, parse3MF, buildMesh, segment, exportSTEP, analyse, fitCylinder, fitSphere, fitPlane, fitCone, fitTorus, fitBSpline, detectThread, threadsToCylinders, fixNonManifold, findSelfIntersections, repairSelfIntersections, fitBSplineClosed, reportPdf, fillHoles, features, deviation, surfDist, editRegions, regionStats, resizeHole, holeTarget, HOLE_SIZES, verifyStep };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   else root.M2S = API;
 })(typeof self !== 'undefined' ? self : this);
