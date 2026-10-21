@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — worker.js
- * Versione: 1.12.0 — 2026-10-21 21:49 (Europe/Rome)
+ * Versione: 1.13.0 — 2026-10-21 22:59 (Europe/Rome)
  * Versione precedente archiviata in archive/worker_v1.0.0_20261005-1710.js (2026-10-06: riscrittura
  * per editing, riparazione, export STL/OBJ, deviazione, corpi).
  *
@@ -14,6 +14,7 @@
  *   hole    {region, mode, size, dia}  -> risultato analisi + {positions, info, diameter, label}  modifica del diametro di un foro [v1.8.0]
  *   undo    {}                     -> risultato analisi precedente (+ positions/info se l'ultima modifica era un foro)
  *   step    {opts:{tol, bodies, threadCyl}}   -> {text, ...}
+ *   stepOCC {opts}                 -> {text, report}  STEP controllato con OpenCASCADE e ripiego a triangoli delle regioni non valide [v1.13.0]
  *   verify  {opts}                 -> {report, faces, edges, solids, surfaces, name}  esporta lo STEP e ne controlla struttura e topologia [v1.9.0]
  *   pdf     {L, lang}              -> {buf: PDF}  [v1.4.0]
  *   stl     {}                     -> {buf}   STL binario della mesh corrente
@@ -39,6 +40,17 @@ function loadManifold() {
     const w = await mod.default(cfg.wasm ? { wasmBinary: cfg.wasm, locateFile: f => f } : {}); w.setup(); return w;
   })().catch(e => { manifoldP = null; throw e; });
   return manifoldP;
+}
+// [v1.13.0] OpenCASCADE (replicad-opencascadejs, LGPL-2.1, vendor/replicad_single.js + .wasm ~23 MB) caricato solo su richiesta.
+// Nella build single-file (dist) non è incorporato: il comando risponde err.occMissing.
+let occP = null;
+function loadOCC() {
+  if (!occP) occP = (async () => {
+    if (self.M2S_MANIFOLD_EMBED) throw new Error('err.occMissing');
+    const mod = await import('../vendor/replicad_single.js');
+    return mod.default({});
+  })().catch(e => { occP = null; throw e; });
+  return occP;
 }
 const history = [];   // stati precedenti di seg per "Annulla" (max 20)
 
@@ -144,6 +156,10 @@ self.onmessage = async ({ data }) => {
     } else if (cmd === 'step') {
       const r = M2S.exportSTEP(M, seg, { name: lastName, tol: data.opts.tol, bodies: data.opts.bodies, threadCyl: data.opts.threadCyl });
       reply({ text: r.text, faces: r.faces, edges: r.edges, solids: r.solids, surfaces: r.surfaces, name: lastName });
+    } else if (cmd === 'stepOCC') {   // [v1.13.0] STEP validato con OpenCASCADE + ripiego per regione (come SimpleCAD)
+      const oc = await loadOCC();
+      const r = M2S.stepValidated(M, seg, oc, { name: lastName, tol: data.opts.tol, bodies: data.opts.bodies, threadCyl: data.opts.threadCyl });
+      reply({ text: r.text, name: lastName, report: { valid: r.valid, invalid: r.invalid, volume: r.volume, meshVolume: r.meshVolume, faces: r.faces, faceted: r.faceted, rounds: r.rounds } });
     } else if (cmd === 'verify') {   // [v1.9.0] Verifica STEP: stessa esportazione di 'step', poi M2S.verifyStep sul testo
       const r = M2S.exportSTEP(M, seg, { name: lastName, tol: data.opts.tol, bodies: data.opts.bodies, threadCyl: data.opts.threadCyl });
       reply({ report: M2S.verifyStep(r.text), faces: r.faces, edges: r.edges, solids: r.solids, surfaces: r.surfaces, name: lastName });

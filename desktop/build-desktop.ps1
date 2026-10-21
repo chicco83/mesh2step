@@ -1,5 +1,5 @@
 # Mesh2STEP Desktop — build-desktop.ps1
-# Versione: 1.3.0 — 2026-10-06 14:10 (Europe/Rome)
+# Versione: 1.13.0 — 2026-10-21 22:59 (Europe/Rome)
 # Equivalente PowerShell di build-desktop.sh (per Windows senza Git Bash).
 # Copia l'app web in desktop\wwwroot e pubblica l'exe portabile win-x64.
 # Output: desktop\out\Mesh2STEP_v<versione>_<AAAAMMGG-HHMM>.exe   — richiede .NET 8 SDK.
@@ -13,7 +13,8 @@ New-Item -ItemType Directory -Force wwwroot\src, wwwroot\vendor, wwwroot\icons |
 Copy-Item ..\index.html, ..\manifest.webmanifest wwwroot\
 Copy-Item ..\src\app.js, ..\src\worker.js, ..\src\core.js wwwroot\src\
 # [2026-10-07 v1.7.0] prima: solo three.module.min.js e OrbitControls.js (manifold-3d serve a «Ripara auto-intersezioni»)
-Copy-Item ..\vendor\three.module.min.js, ..\vendor\OrbitControls.js, ..\vendor\manifold.js, ..\vendor\manifold.wasm wwwroot\vendor\
+# [2026-10-21 v1.13.0] prima: senza replicad_single.* (OpenCASCADE per «STEP validato»)
+Copy-Item ..\vendor\three.module.min.js, ..\vendor\OrbitControls.js, ..\vendor\manifold.js, ..\vendor\manifold.wasm, ..\vendor\replicad_single.js, ..\vendor\replicad_single.wasm wwwroot\vendor\
 Copy-Item ..\icons\*.png wwwroot\icons\
 dotnet publish -c Release -o publish
 New-Item -ItemType Directory -Force out | Out-Null

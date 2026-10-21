@@ -1,5 +1,5 @@
 # CONTEXT — Mesh2STEP
-Versione documento: 1.12.0 — 2026-10-21 21:49
+Versione documento: 1.13.0 — 2026-10-21 22:59
 
 ## Scopo
 Web app che converte mesh triangolari (STL, OBJ, 3MF) in file STEP con **geometria CAD reale**:
@@ -85,6 +85,7 @@ index.html ── src/app.js (UI, viewer three.js, i18n, editing, export, API in
 | 2026-10-05 | Cowork cloud | Analisi del sito di riferimento, v1.0.0 (piani, cilindri, sfere, STEP), commit `729f9ed` caricato dall'utente |
 | 2026-10-06 mattina | Cowork cloud | v1.0.1 README completo; v1.1.0–1.3.0 tutte le migliorie (commit `e1e10bb`, `61c8f81`), consegnate come git bundle perché la sessione non poteva fare push; pubblicate dall'utente; Pages verificato online |
 | 2026-10-06 14:10 | Cowork cloud | Documentazione per riprendere il lavoro da Claude Code |
+| 2026-10-21 | Claude Code (cloud) | v1.13.0: OpenCASCADE (replicad-opencascadejs) nel Worker, «STEP validato» con ripiego per regione; Plenum valido (volume +0,28%) ma 3 669 facce; scoperte facce valide ma mal ritagliate (volume −15%) |
 | 2026-10-21 | Claude Code (cloud) | v1.12.0: port in JS di `simplecad/surfaces/fit.py` (MIT) come `segmentSimpleCAD` sperimentale; risultati peggiori del motore Mesh2STEP senza la parte OpenCASCADE |
 | 2026-10-21 | Claude Code (cloud) | v1.11.2: analisi di SimpleCAD (addon FreeCAD); bordi portati sulle superfici; Plenum 8 → 5 facce non valide |
 | 2026-10-21 | Claude Code (cloud) | v1.11.1: indagine STEP non validi (cerchi falsi, B-spline tra i vertici, assorbimento senza rifit): scoop valido, Plenum 49 → 8 facce non valide. symplecad non accessibile |
@@ -102,6 +103,7 @@ Differenze: SimpleCAD lavora dentro FreeCAD con OpenCASCADE (può validare e rip
 Adottato in 1.11.2: proiezione dei bordi sulle superfici (solo tra superfici analitiche) e suddivisione dei segmenti che si staccano. 1.12.0: port completo di `fit.py` (`segmentSimpleCAD`, sezione 6 di core.js, sperimentale). La parte che rende validi i risultati di SimpleCAD è quella FreeCAD/OpenCASCADE (`mesh/surfaces.py`: facce ritagliate, validazione, ripiego): nel browser servirebbe opencascade.js.
 
 ## Problemi aperti
+- **Facce valide ma ritagliate male** (1.13.0): sul Plenum 25 regioni hanno area OCC diversa dai loro triangoli pur con bordi che OCC legge entro 0,1 mm dalla mesh (es. piano: anello esterno 1 427,9 mm² in OCC contro 1 200,3 dai vertici). Il ripiego le rende corrette a triangoli; la causa va trovata per tornare a poche facce.
 - **STEP organici non validi in OpenCASCADE**: dopo la 1.11.2 restano 5 facce su ~540 nel file Plenum (4 B-spline, 1 sfera). `scoop` risolto. Idee: PCURVE esplicite, ripiego per faccia ai triangoli.
 - Modifica foro (1.8.0): la «filettatura» è foro di maschiatura + etichetta, non elica; da valutare un campione con foro cieco/punta conica. «Verifica STEP» (1.9.0) è un controllo leggero, non sostituisce OpenCASCADE.
 - App Windows: da provare «Apri con…»/trascinamento sull'exe e l'avvio su un PC senza runtime WebView2.

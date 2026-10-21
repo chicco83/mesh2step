@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — app.js
- * Versione: 1.12.0 — 2026-10-21 21:49 (Europe/Rome)
+ * Versione: 1.13.0 — 2026-10-21 22:59 (Europe/Rome)
  * Versione precedente archiviata: archive/app_v1.0.1_20261006-1310.js
  * (2026-10-06: riscritta per editing facce, corpi, report CSV, export STL/OBJ, heatmap deviazione,
  *  viste, IT/EN, tema chiaro, condivisione, PWA e API di integrazione).
@@ -21,7 +21,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 // [2026-10-21 19:26 v1.11.1] const VERSION = '1.11.0';
 // [2026-10-21 20:51 v1.11.2] const VERSION = '1.11.1';
 // [2026-10-21 21:49 v1.12.0] const VERSION = '1.11.2';
-const VERSION = '1.12.0';
+// [2026-10-21 22:59 v1.13.0] const VERSION = '1.12.0';
+const VERSION = '1.13.0';
 const $ = id => document.getElementById(id);
 const store = { get: k => { try { return localStorage.getItem('m2s.' + k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem('m2s.' + k, v); } catch { /* storage non disponibile */ } } };
 
@@ -59,6 +60,7 @@ const DICT = {
     'step.dupId': 'id duplicato', 'step.dangling': 'riferimento a entità inesistente', 'step.loopRef': 'anello con spigoli non validi', 'step.loopOpen': 'anello non chiuso', 'step.faceNoBound': 'faccia senza bordo',
     'step.shellFace': 'guscio con faccia inesistente', 'step.shellNotClosed': 'guscio chiuso con spigoli non accoppiati', 'step.shellEdge': 'spigolo usato più di due volte', 'step.noFaces': 'nessuna faccia', 'step.openBoundary': 'bordo aperto (spigoli usati una volta)',
     auto_tol: 'Tolleranza automatica (alza se restano troppi triangoli)', auto_used: ' Tolleranza automatica: {b} → {a} mm.',
+    stepocc: 'STEP validato (OpenCASCADE)', occ_busy: 'Controllo con OpenCASCADE (al primo uso si scaricano ~23 MB)…', occ_ok: 'STEP valido per OpenCASCADE: {f} facce, volume {v} cm³ (mesh {m}); {n} regioni esportate a triangoli.', occ_bad: 'STEP ancora non valido dopo il ripiego: {i} facce non valide ({n} regioni a triangoli).', 'err.occMissing': 'OpenCASCADE non è incluso nella versione a file singolo: usa il sito o l\'app Windows',
     csv_head: 'tipo;diametro_mm;profondita_mm;passante;asse_x;asse_y;asse_z;pos_x;pos_y;pos_z;note',
   },
   en: {
@@ -93,6 +95,7 @@ const DICT = {
     'step.dupId': 'duplicate id', 'step.dangling': 'reference to a missing entity', 'step.loopRef': 'loop with invalid edges', 'step.loopOpen': 'loop not closed', 'step.faceNoBound': 'face without bound',
     'step.shellFace': 'shell with a missing face', 'step.shellNotClosed': 'closed shell with unpaired edges', 'step.shellEdge': 'edge used more than twice', 'step.noFaces': 'no faces', 'step.openBoundary': 'open boundary (edges used once)',
     auto_tol: 'Automatic tolerance (raise it when too many triangles remain)', auto_used: ' Automatic tolerance: {b} → {a} mm.',
+    stepocc: 'Validated STEP (OpenCASCADE)', occ_busy: 'Checking with OpenCASCADE (first use downloads ~23 MB)…', occ_ok: 'STEP valid for OpenCASCADE: {f} faces, volume {v} cm³ (mesh {m}); {n} regions exported as triangles.', occ_bad: 'STEP still invalid after fallback: {i} invalid faces ({n} regions as triangles).', 'err.occMissing': 'OpenCASCADE is not included in the single-file build: use the website or the Windows app',
     csv_head: 'type,diameter_mm,depth_mm,through,axis_x,axis_y,axis_z,pos_x,pos_y,pos_z,note',
   },
 };
@@ -279,7 +282,7 @@ function onMesh(r) {
   bodyCfg = info.bodyList.map(b => ({ name: b.name, include: true }));
   $('results').hidden = true; $('editsec').hidden = true; $('pick').hidden = true; $('drop').style.display = 'none';   // [2026-10-06] prima: $('drop').textContent = '' (il cambio lingua lo riscriveva)
   showMesh(r.positions); showInfo(); renderBodies(info.bodyList);
-  $('analyse').disabled = false; $('step').disabled = true; $('verify').disabled = true; $('vrep').hidden = true; $('stl').disabled = false; $('obj').disabled = false;
+  $('analyse').disabled = false; $('step').disabled = true; $('verify').disabled = true; $('stepocc').disabled = true; $('vrep').hidden = true; $('stl').disabled = false; $('obj').disabled = false;
   // tolleranza suggerita: 0,01–0,2 mm in proporzione alla diagonale del pezzo
   $('tol').value = Math.min(0.2, Math.max(0.01, +(info.diag * 1e-4).toFixed(3)));
 }
@@ -327,7 +330,7 @@ function opts() {
 function onResult(r) {
   res = r; sel.clear();   // [2026-10-06 v1.3.1] prima: la faccia risultante da un'unione restava selezionata (sel.add(r.selected))
   showEdgesObj(r.edges); showResults(); updateSel();
-  $('results').hidden = false; $('editsec').hidden = false; $('step').disabled = false; $('verify').disabled = false;
+  $('results').hidden = false; $('editsec').hidden = false; $('step').disabled = false; $('verify').disabled = false; $('stepocc').disabled = false;
   try { $('share').hidden = !(navigator.canShare && navigator.canShare({ files: [new File(['x'], 'x.step')] })); } catch { $('share').hidden = true; }
 }
 async function analyse() {
@@ -429,6 +432,17 @@ async function makeStep() {
 $('step').onclick = async () => {
   try { busy(true); status(t('step_gen')); const r = await makeStep(); download(r.text, r.name + '.step', 'application/step'); }
   catch (e) { status(t('err') + errText(e), 'err'); } finally { busy(false); }
+};
+// ---- [v1.13.0] STEP validato con OpenCASCADE: controllo B-rep vero e ripiego a triangoli delle regioni con facce non valide o mal ritagliate ----
+$('stepocc').onclick = async () => {
+  try {
+    busy(true); status(t('occ_busy'));
+    const r = await call({ cmd: 'stepOCC', opts: { tol: analysedTol, bodies: bodyCfg, threadCyl: $('o_thrcyl').checked } }), p = r.report;
+    const v = fmt(p.volume / 1000, 2), m = fmt(p.meshVolume / 1000, 2);
+    $('vrep').innerHTML = esc(p.rounds.map((x, i) => `#${i}: ${x.faces} → OCC ${x.occFaces}, ${x.invalid} ✗, ${fmt(x.volume / 1000, 2)} cm³${x.faceted ? ', +' + x.faceted + ' ▲' : ''}`).join(' | ')); $('vrep').hidden = false;
+    status(p.valid ? t('occ_ok', { f: p.faces, v, m, n: p.faceted }) : t('occ_bad', { i: p.invalid, n: p.faceted }), p.valid ? '' : 'warn');
+    download(r.text, r.name + '.step', 'application/step');
+  } catch (e) { status(t('err') + errText(e), 'err'); } finally { busy(false); }
 };
 // ---- [v1.9.0] Verifica STEP ----
 const vtext = c => { const [k, ...r] = c.split(':'); return t(k) + (r.length ? ' (' + r.join(' ') + ')' : ''); };

@@ -1,5 +1,5 @@
 # MIGLIORIE — Mesh2STEP
-Versione documento: 1.12.0 — 2026-10-21 21:49
+Versione documento: 1.13.0 — 2026-10-21 22:59
 <!-- [2026-10-06 13:45] versione precedente 1.0.0 (2026-10-05 17:10): elenco proposte tutte "da fare";
      aggiornato con lo stato di realizzazione. -->
 
@@ -28,6 +28,7 @@ Stato: ✅ fatto · 🟡 parziale · ⏸️ valutato e rinviato.
 | 18 | IT/EN, tema chiaro, viste | ✅ | 1.2.0 | |
 | 19 | Modifica foro (Ø, M2–M16: gioco / maschiatura / etichetta filetto) | 🟡 | 1.8.0 | Diametro cambiato con Annulla; la «filettatura» è foro di maschiatura + etichetta, **non** elica reale |
 | 22 | Patch B-spline per superfici libere a guscio (stadio 4d-bis) | 🟡 | 1.11.2 | Facce −91% sul file dell'utente (4 529 → 414); `scoop` valido; sul Plenum restano 5 facce non valide su ~540 (erano 49 in 1.11.0) |
+| 25 | OpenCASCADE nel browser: «STEP validato» con ripiego per regione | ✅ | 1.13.0 | Plenum valido con volume +0,28% ma 3 669 facce; causa delle facce mal ritagliate da trovare |
 | 24 | Port dell'adattatore di SimpleCAD (`segmentSimpleCAD`) | 🟡 | 1.12.0 | Sperimentale, solo API: più facce del motore Mesh2STEP sui campioni e sul Plenum; rounded_plate −7% di volume. Manca la parte OpenCASCADE (costruzione/validazione/ripiego) |
 | 23 | Idee da SimpleCAD: saldatura entro tolleranza, adattamento alla prima fila di triangoli vicina, PCURVE esplicite, ripiego per faccia | ⏸️ | — | Vedi CONTEXT «Analisi di SimpleCAD» |
 | 21 | Tolleranza automatica e robustezza al rumore | ✅ | 1.10.0 | Meno triangoli sfaccettati su mesh rumorose/grossolane; vedi CHANGELOG 18 |

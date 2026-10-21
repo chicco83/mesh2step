@@ -1,5 +1,5 @@
 # CLAUDE.md — Mesh2STEP
-Versione: 1.12.0 — 2026-10-21 21:49
+Versione: 1.13.0 — 2026-10-21 22:59
 <!-- [2026-10-06 14:10] versione precedente (2026-10-06 13:45, commit 61c8f81): solo regole di versioning,
      documenti, test, git e progetto. Ora anche stato, ambiente, mappa del codice, insidie e prossimi passi
      per riprendere il lavoro da Claude Code. Le regole precedenti sono riportate invariate qui sotto. -->
@@ -14,10 +14,10 @@ Replica clean-room di mesh2solid.thavision.com con le funzioni "Pro" gratis e va
 - Repo: `https://github.com/chicco83/mesh2step` — sito: `https://chicco83.github.io/mesh2step/` (Pages da `main` / root)
 - Copia locale dell'utente: `G:\Il mio Drive\CRISTIANO\VIBE CODING\mesh2step` (cartella Google Drive)
 
-## 2. Stato al 2026-10-21 21:49
+## 2. Stato al 2026-10-21 22:59
 | Voce | Stato |
 |---|---|
-| Versione | **1.12.0** (branch di lavoro `ccr-b99c727f-y1lwzj`; v1.11.2 `73f3075`, v1.11.1 `687bfae`) — CI e Pages da controllare |
+| Versione | **1.13.0** (branch di lavoro `ccr-b99c727f-y1lwzj`; v1.12.0 `d6c200b`, v1.11.2 `73f3075`) — CI e Pages da controllare |
 | Sito Pages | ✅ online alla 1.4.0, provato il 2026-10-07: bolt_m6 (opzione filettatura→cilindro: 5 facce, 2 cilindri), PDF, toro (2 facce toroidali), service worker attivo, console pulita. Provati in locale (1.3.2–1.4.0): tema chiaro/scuro, selezione, unione/annulla, deviazione, riparazione, export STEP/STL/OBJ |
 | Test core + OpenCASCADE | 28 STEP tutti `valid=True` (`tests/known_invalid.txt` vuoto dalla 1.11.1) (20 + `noisy_plate`/`noisy_fillet`/`scoop` + 5 da `test_hole.js`: `plate_hole_{clearance,tap,thread,diameter}`, `countersink_tap`); `test_autotol.js`, `test_verify.js`, `test_hole.js`, `test_repair.js`, `test_pdf.js`, `test_selfint.js`, `test_devthr.js`, `test_selfrepair.js` ok (vedi §6) |
 | CI GitHub (`ci.yml`) | ✅ verde sui push 1.5.0, 1.5.1 e 1.6.0 (test core, OpenCASCADE, riparazione, PDF, auto-intersezioni, deviazione filetti); dalla 1.7.0 anche `test_selfrepair.js` |
@@ -45,12 +45,12 @@ python -m http.server 8000   # poi http://localhost:8000
 ## 4. Mappa del codice
 | File | Contenuto |
 |---|---|
-| `src/core.js` | Motore senza DOM (IIFE, esporta `M2S` in Worker e `module.exports` in Node). Sezioni: **1. Parsing** (`parseSTL`, `parseOBJ`, `parse3MF` con `unzip`/`inflateRaw`, `parseFile`) · **2. Topologia** (`buildMesh`: saldatura, normali, spigoli `E0/E1/ET`, vicini `nb`, componenti `comp`, nomi corpi) · **3. Fitting** (`fitPlane`, `fitCircle2D`, `axisFromNormals`, `fitCylinder`, `fitSphere`) · **4. Riconoscimento** (`segment`, stadi 4-00 → 4f, vedi sotto) · **3-bis. Primitive/utilità** (`fitCone`, `coneDist`, `fitTorus`, `torusDist`, `cylErr`, `ISO_METRIC`, `detectThread`, `fitBSpline`, `fillHoles`, `fixNonManifold`, `findSelfIntersections`, `fitBSplineClosed`, `threadsToCylinders`, `reportPdf`, `regionStats`, `editRegions`, `resizeHole` (+ `holeTarget`, `HOLE_SIZES`), `verifyStep`, `segmentAuto` (+ `looseTris`), **6. Port SimpleCAD** (`segmentSimpleCAD`, `scFit`, `scCylinder`, … MIT: non togliere l'avviso), `features`, `surfDist`, `deviation`) · **5. Export** (`stepNum`, `exportSTEP`) · `analyse` |
+| `src/core.js` | Motore senza DOM (IIFE, esporta `M2S` in Worker e `module.exports` in Node). Sezioni: **1. Parsing** (`parseSTL`, `parseOBJ`, `parse3MF` con `unzip`/`inflateRaw`, `parseFile`) · **2. Topologia** (`buildMesh`: saldatura, normali, spigoli `E0/E1/ET`, vicini `nb`, componenti `comp`, nomi corpi) · **3. Fitting** (`fitPlane`, `fitCircle2D`, `axisFromNormals`, `fitCylinder`, `fitSphere`) · **4. Riconoscimento** (`segment`, stadi 4-00 → 4f, vedi sotto) · **3-bis. Primitive/utilità** (`fitCone`, `coneDist`, `fitTorus`, `torusDist`, `cylErr`, `ISO_METRIC`, `detectThread`, `fitBSpline`, `fillHoles`, `fixNonManifold`, `findSelfIntersections`, `fitBSplineClosed`, `threadsToCylinders`, `reportPdf`, `regionStats`, `editRegions`, `resizeHole` (+ `holeTarget`, `HOLE_SIZES`), `verifyStep`, `occCheckStep`/`stepValidated`/`facetRegionsAt` (OpenCASCADE iniettato), `segmentAuto` (+ `looseTris`), **6. Port SimpleCAD** (`segmentSimpleCAD`, `scFit`, `scCylinder`, … MIT: non togliere l'avviso), `features`, `surfDist`, `deviation`) · **5. Export** (`stepNum`, `exportSTEP`) · `analyse` |
 | `src/worker.js` | Protocollo `load / repair / analyse / edit / undo / step / stl / obj`; riassunti serializzabili delle regioni; cronologia per Annulla |
 | `src/app.js` | UI: dizionario `DICT` IT/EN, tema, viewer three.js, picking/selezione, tabelle, corpi, editing, export, CSV, integrazione (`postMessage`, `?url=`, `launchQueue`, service worker) |
 | `index.html` | Layout e CSS (token colore in `:root` e `[data-theme="light"]`), import map verso `vendor/` |
 | `sw.js` · `manifest.webmanifest` · `icons/` | PWA (cambiare `CACHE` a ogni versione) |
-| `vendor/` | three.js 0.169 `three.module.min.js` + `OrbitControls.js` (MIT); `manifold.js` + `manifold.wasm` (manifold-3d 3.5.4, Apache-2.0: riparazione auto-intersezioni; ESM + wasm, caricati con `import()` nel Worker) |
+| `vendor/` | **replicad_single.js + .wasm** (replicad-opencascadejs 1.1.0 = OpenCASCADE in WASM, LGPL-2.1, ~23 MB: «STEP validato», `import()` nel Worker, non in dist) · three.js 0.169 `three.module.min.js` + `OrbitControls.js` (MIT); `manifold.js` + `manifold.wasm` (manifold-3d 3.5.4, Apache-2.0: riparazione auto-intersezioni; ESM + wasm, caricati con `import()` nel Worker) |
 | `build.mjs` | Build single-file offline in `dist/` (three/app/worker incorporati come moduli Blob) |
 | `desktop/` | App Windows WebView2 (C#/.NET 8): `Program.cs` serve i file incorporati su `https://app.mesh2step/` |
 | `tests/` | `make_samples.py` (mesh note con manifold3d), `run_core.js`, `check_step.py`, `samples/` |
@@ -91,6 +91,7 @@ node tests/test_repair.js          # riparazione non-manifold (exit 1 se fallisc
 node tests/test_pdf.js             # report PDF: struttura e conteggio fori
 node tests/test_selfint.js         # auto-intersezioni: campioni chiusi = 0, due scatole sovrapposte > 0
 node tests/test_devthr.js          # deviazione filetti dal cilindro nominale (bolt_m6: ~0,63 mm)
+node tests/test_occ.mjs            # OpenCASCADE: plate_hole/countersink validi, scoop valido dopo ripiego, volumi entro 1%
 node tests/test_simplecad.js       # port SimpleCAD: plate_hole 6+1, bump 5+1, verifyStep
 node tests/test_autotol.js         # tolleranza automatica: noisy_plate/noisy_fillet tornano a 7/27 facce, mesh pulite invariate
 node tests/test_verify.js          # Verifica STEP: i 27 STEP di tests/out passano, 4 corruzioni rilevate (dopo run_core.js e test_hole.js)
@@ -137,7 +138,7 @@ Per l'interfaccia: prova nel browser caricamento, analisi, selezione, modifica/a
 | overlap_pin_riparata | unione: 1 solido, 8 piani + 2 cilindri | 13005,31 (unione mesh 13003,70) |
 | shaft | 7 piani + 1 cilindro | 21924,78 |
 | named_parts | 2 solidi "Piastra", "Perno" | 11717,26 |
-| bolt_m6 | 3 piani + 1 cilindro + 1 filettatura M6 destra (sfaccettata) | ~756 |
+| bolt_m6 | 3 piani + 1 cilindro + 1 filettatura M6 destra (sfaccettata, triangoli complanari uniti: 54 531 facce lette) | ~756 |
 | torus | toro completo → **2 facce toroidali** | 9869,60 (esatto) |
 | sphere_full | sfera completa → **2 facce sferiche** | 4188,79 (esatto) |
 | bolt_m6_threadcyl | filetto → cilindro nominale: 3 piani + 2 cilindri | ~820,6 |
@@ -162,10 +163,11 @@ Tutti devono essere `valid=True`; `check_step.py` esce con codice 1 altrimenti.
 - **Superfici libere**: quadriche a raggio variabile in catena = mosaico organico (stadio 4d-bis), non raccordi; un «filetto» con pochi giri su una superficie ondulata è un falso positivo (servono ≥ 2,5 giri). Il file reale dell'utente (GPU fan plenum) è il banco di prova: non è nel repo, chiedere di nuovo se serve.
 - **STEP non validi**: diagnosticare con la tolleranza degli spigoli letti da OCC (> tol = spigolo fuori faccia). Cause già viste: cerchi falsi su catene di 4 punti, B-spline controllate solo nei vertici con triangoli lunghi, frammenti assorbiti senza rifit, dominio B-spline troppo stretto.
 - **Bordi sulle superfici**: spostare i punti di bordo (`between`) solo tra superfici analitiche; accanto alle B-spline solo suddividere le corde che si staccano (> tol/2); mai suddividere accanto alle B-spline chiuse (volume del vaso +0,5%).
+- **OpenCASCADE (replicad)**: `Poly_Triangle.Get()` non funziona (parametri di uscita): usare `Value(1..3)`. Attribuire le facce OCC alle regioni con punti dentro la faccia (tessellazione) e distanza punto-triangolo, non con vertici o centri. Il volume OCC di uno shell non valido è inaffidabile; quello di uno valido sì.
 - **Timestamp**: usare l'ora reale (`Get-Date` / `date`), mai orari stimati.
 
 ## 8. Prossimi passi (in ordine di priorità)
-**PRIORITÀ**: file Plenum: restano 5–6 facce non valide su ~540 (B-spline, sfera); il port di SimpleCAD (1.12.0) non migliora (1 192 facce, 7 non valide) perché manca la parte OpenCASCADE. Proposta: opencascade.js (WASM) per costruire/validare le facce e ripiegare per faccia. Strada indicata: PCURVE esplicite nello STEP o ripiego per faccia ai triangoli. Strumenti: `BRepCheck_Face`, `ShapeAnalysis_Wire(wire, face, prec)`, tolleranza degli spigoli dopo la lettura (`BRep_Tool.Tolerance`). Il volume OCC di uno shell non valido non è un buon indicatore. SimpleCAD (https://github.com/igsova/SimpleCAD, MIT) è il riferimento per le idee (CONTEXT «Analisi di SimpleCAD»).
+**PRIORITÀ**: con «STEP validato» (1.13.0) il Plenum è valido e il volume giusto, ma 3 669 facce: 25 regioni hanno facce valide ma **mal ritagliate** (area OCC ≠ area dei triangoli, bordi entro 0,1 mm). Trovare la causa (anelli/pcurve sui piani con archi, B-spline) per evitare il ripiego a triangoli. Script di confronto in CHANGELOG 23. Strada indicata: PCURVE esplicite nello STEP o ripiego per faccia ai triangoli. Strumenti: `BRepCheck_Face`, `ShapeAnalysis_Wire(wire, face, prec)`, tolleranza degli spigoli dopo la lettura (`BRep_Tool.Tolerance`). Il volume OCC di uno shell non valido non è un buon indicatore. SimpleCAD (https://github.com/igsova/SimpleCAD, MIT) è il riferimento per le idee (CONTEXT «Analisi di SimpleCAD»).
 Fatti il 2026-10-21 (v1.11.0): stadio 4d-bis (patch B-spline per superfici libere), filettature ≥ 2,5 giri, auto-tolleranza più veloce.
 Fatti il 2026-10-21 (v1.10.0): tolleranza automatica + robustezza al rumore (piani/cilindri/tori/fusione). Idee non fatte, dall'analisi di Plasticity (PolySplines: patch NURBS G2 da mesh, solo tier Studio): patch B-spline per le zone freeform aperte con tolleranza maggiore; decimazione delle zone sfaccettate residue. «SymplCAD» non è stato trovato online (nome da confermare).
 Fatti il 2026-10-09 (v1.9.0): Verifica STEP nell'app (controllo leggero). Dal confronto col sito di riferimento non resta nulla di aperto tranne «Apri in Fusion» (impossibile da browser) e «Adattamento alle superfici originali» (funzione poco chiara).

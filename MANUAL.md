@@ -1,5 +1,5 @@
 # MANUALE — Mesh2STEP
-Versione documento: 1.12.0 — 2026-10-21 21:49
+Versione documento: 1.13.0 — 2026-10-21 22:59
 <!-- [2026-10-06 13:45] versione precedente 1.0.0 (2026-10-05 17:10) nel repository git (commit 729f9ed). -->
 
 ## 1. Avvio
@@ -54,6 +54,11 @@ Il colore dipende **solo dal tipo** di superficie (dalla 1.3.1): facce vicine de
 - **Scarto max accettato**: default 5 × tolleranza.
 - Le facce unite devono essere contigue.
 - **Annulla ultima modifica**: fino a 20 passi. Una nuova analisi azzera la cronologia.
+
+### STEP validato con OpenCASCADE (dalla 1.13.0)
+- **STEP validato (OpenCASCADE)** (sezione Export) controlla lo STEP con lo stesso motore B-rep dei CAD (OpenCASCADE). Le regioni con facce non valide o con area diversa da quella dei loro triangoli vengono esportate a triangoli finché lo STEP è valido (al massimo 4 giri), poi il file viene scaricato. Il riquadro mostra i giri: facce, facce lette da OCC, facce non valide (✗), volume, regioni passate a triangoli (▲).
+- Al primo uso scarica ~23 MB (poi restano nella cache, anche offline). Non disponibile nella versione a file singolo.
+- Uno STEP «validato» può avere molte più facce: è il prezzo per la correttezza dove le superfici adattate non bastano.
 
 ### Superfici libere (dalla 1.11.0)
 - Le zone lisce a forma libera (condotti, scoop, carene) diventano **patch B-spline** (colore B-spline) invece di mosaici di sfere/cilindri o triangoli. Se una zona resta a triangoli aumenta la tolleranza o lascia attiva la tolleranza automatica.

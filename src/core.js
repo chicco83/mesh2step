@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — core.js
- * Versione: 1.12.0 — 2026-10-21 21:49 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
+ * Versione: 1.13.0 — 2026-10-21 22:59 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
  * ---------------------------------------------------------------------------
  * Motore indipendente dalla UI (gira nel Web Worker del browser e in Node per i test).
  *   1. Parsing  : STL (binario/ASCII), OBJ, 3MF (zip letto a mano + DecompressionStream)
@@ -23,7 +23,8 @@
   // [2026-10-21 19:26 v1.11.1] const VERSION = '1.11.0';
   // [2026-10-21 20:51 v1.11.2] const VERSION = '1.11.1';
   // [2026-10-21 21:49 v1.12.0] const VERSION = '1.11.2';
-  const VERSION = '1.12.0';
+  // [2026-10-21 22:59 v1.13.0] const VERSION = '1.12.0';
+  const VERSION = '1.13.0';
 
   // ===================== Helper vettoriali (array [x,y,z]) =====================
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -2122,7 +2123,26 @@
         for (const t of tris) (dot(sub([M.C[3 * t], M.C[3 * t + 1], M.C[3 * t + 2]], r.center), nn) >= 0 ? ga : gb).push(t);
         if (ga.length && gb.length) { for (const g of [ga, gb]) { for (const t of g) fid[t] = nF; nF++; faceInfo.push({ region: r, tris: g }); } continue; }
       }
-      if (faceted) for (const t of tris) { fid[t] = nF++; faceInfo.push({ region: r, tris: [t], faceted: true }); }
+      // [2026-10-21 v1.13.0] prima: un triangolo per faccia. Ora i triangoli complanari connessi diventano una sola faccia piana e le schegge
+      // (triangoli degeneri, senza area) si uniscono alla faccia oltre il loro lato lungo (come «settle_slivers» di SimpleCAD): una scheggia
+      // da sola era una faccia non valida per OpenCASCADE.
+      // prima: if (faceted) for (const t of tris) { fid[t] = nF++; faceInfo.push({ region: r, tris: [t], faceted: true }); }
+      if (faceted) {
+        const inR = new Set(tris), grp = new Map(), isSl = t => { const a = M.P(M.T[3 * t]), b = M.P(M.T[3 * t + 1]), c = M.P(M.T[3 * t + 2]), lo = Math.max(len(sub(b, a)), len(sub(c, b)), len(sub(a, c))); return 2 * M.A[t] < Math.max(1e-3 * lo, 1e-6 * M.diag) * lo; };
+        const nrm = t => [M.N[3 * t], M.N[3 * t + 1], M.N[3 * t + 2]], coplanar = (t, u) => { if (dot(nrm(t), nrm(u)) < Math.cos(1e-3)) return false; const o = M.P(M.T[3 * t]), n = nrm(t); for (let k = 0; k < 3; k++) if (Math.abs(dot(sub(M.P(M.T[3 * u + k]), o), n)) > 1e-7 * M.diag) return false; return true; };
+        const groups = [];
+        for (const t0 of tris) {
+          if (grp.has(t0) || isSl(t0)) continue;
+          const g = [t0]; grp.set(t0, groups.length);
+          for (let q = 0; q < g.length; q++) for (let k = 0; k < 3; k++) { const u = M.nb[3 * g[q] + k]; if (u < 0 || !inR.has(u) || grp.has(u) || isSl(u) || !coplanar(t0, u)) continue; grp.set(u, groups.length); g.push(u); }
+          groups.push(g);
+        }
+        for (const t of tris) if (!grp.has(t)) {   // schegge: alla faccia oltre il lato lungo (seguendo la catena), altrimenti una faccia propria
+          let u = t; for (let it = 0; it < 64 && !grp.has(u); it++) { const a = M.P(M.T[3 * u]), b = M.P(M.T[3 * u + 1]), c = M.P(M.T[3 * u + 2]), L = [len(sub(b, a)), len(sub(c, b)), len(sub(a, c))], w = M.nb[3 * u + L.indexOf(Math.max(...L))]; if (w < 0 || !inR.has(w) || w === t) break; u = w; }
+          if (grp.has(u)) { grp.set(t, grp.get(u)); groups[grp.get(u)].push(t); } else { grp.set(t, groups.length); groups.push([t]); }
+        }
+        for (const g of groups) { for (const t of g) fid[t] = nF; nF++; let big = g[0]; for (const t of g) if (M.A[t] > M.A[big]) big = t; faceInfo.push({ region: r, tris: g, faceted: true, rep: big }); }
+      }
       else { for (const t of tris) fid[t] = nF; nF++; faceInfo.push({ region: r, tris }); }
     }
 
@@ -2186,7 +2206,9 @@
       if (!(qb && len(sub(qb, q)) <= 0.05 * tol && len(sub(q, p)) <= 2 * tol)) q = mul(add(pa, pb), 0.5);
       // si accetta lo spostamento solo se avvicina il punto a entrambe le superfici (altrimenti resta il punto della mesh)
       const gap = x => Math.max(len(sub(projOn(A, x) || x, x)), len(sub(projOn(B, x) || x, x)));
-      return gap(q) < gap(p) ? q : p;
+      // [2026-10-21 v1.13.0] e solo se lo spostamento è piccolo (≤ 2·tol): accanto a una «sfera» con corde lontane spostava il bordo di millimetri
+      // e la faccia piana vicina, valida per OpenCASCADE, aveva un'area del 20% diversa da quella dei suoi triangoli
+      return gap(q) < gap(p) && len(sub(q, p)) <= 2 * tol ? q : p;
     };
     const curvedRadii = e => M.ET[e].map(t => faceInfo[fid[t]].region).filter(r => r.type === 'cylinder' || r.type === 'sphere').map(r => r.radius);  // (coni gestiti sotto con ctrX/rX)
     const edgeStats = { line: 0, circle: 0, polyline: 0 };
@@ -2351,18 +2373,20 @@
         }
         // area proiettata (per scegliere il bordo esterno delle facce piane)
         // [2026-10-21 v1.11.0] prima: solo r.type === 'plane'; le B-spline aperte usano la stessa area proiettata lungo la loro normale
-        const useAr = r.type === 'plane' || (r.type === 'bspline' && r.normal && !r.closedU);
-        let ar = 0; if (useAr) for (const [a, b] of L) ar += dot(cross(M.P(a), M.P(b)), r.normal);
+        const useAr = r.type === 'plane' || (r.type === 'bspline' && r.normal && !r.closedU) || (fi.faceted && fi.tris.length > 1);
+        const arN = fi.faceted ? [M.N[3 * fi.rep], M.N[3 * fi.rep + 1], M.N[3 * fi.rep + 2]] : r.normal;   // [v1.13.0] facce sfaccettate di più triangoli
+        let ar = 0; if (useAr) for (const [a, b] of L) ar += dot(cross(M.P(a), M.P(b)), arN);
         let per = 0; for (const [a, b] of L) per += len(sub(M.P(b), M.P(a)));   // [2026-10-21 v1.11.0] perimetro (per scegliere il bordo esterno delle facce non piane)
         return { loop: E(`EDGE_LOOP('',(${oe.join(',')}))`), ar, per };
       });
       // [2026-10-21 v1.11.0] prima: solo i piani avevano un FACE_OUTER_BOUND; le altre facce con più anelli (B-spline, cilindri… con fori) li avevano tutti
       // come FACE_BOUND e OpenCASCADE poteva prendere come esterno quello sbagliato. Ora per le non piane l'esterno è l'anello più lungo.
-      let outer = -1; if ((r.type === 'plane' || (r.type === 'bspline' && r.normal && !r.closedU)) && bounds.length) outer = bounds.reduce((bi, b, i) => (b.ar > bounds[bi].ar ? i : bi), 0);
+      let outer = -1; if ((r.type === 'plane' || (r.type === 'bspline' && r.normal && !r.closedU) || (fi.faceted && fi.tris.length > 1)) && bounds.length) outer = bounds.reduce((bi, b, i) => (b.ar > bounds[bi].ar ? i : bi), 0);
       else if (bounds.length > 1) outer = bounds.reduce((bi, b, i) => (b.per > bounds[bi].per ? i : bi), 0);
       const fb = bounds.map((b, i) => E(`${i === outer ? 'FACE_OUTER_BOUND' : 'FACE_BOUND'}('',${b.loop},.T.)`));
       let surf, sense = '.T.', fname = '';
-      if (fi.faceted) { const t = fi.tris[0], n = [M.N[3 * t], M.N[3 * t + 1], M.N[3 * t + 2]]; surf = E(`PLANE('',${place(M.P(M.T[3 * t]), n, perp(n))})`); if (r.type === 'thread') fname = 'THREAD ' + r.label; }
+      // [v1.13.0] prima: t = fi.tris[0] (con le facce di più triangoli serve il triangolo più grande: le schegge hanno normale casuale)
+      if (fi.faceted) { const t = fi.rep != null ? fi.rep : fi.tris[0], n = [M.N[3 * t], M.N[3 * t + 1], M.N[3 * t + 2]]; surf = E(`PLANE('',${place(M.P(M.T[3 * t]), n, perp(n))})`); if (r.type === 'thread') fname = 'THREAD ' + r.label; }
       else if (r.type === 'plane') surf = E(`PLANE('',${place(r.origin, r.normal, perp(r.normal))})`);
       else if (r.type === 'cone') {   // [v1.1.0] posizione alla quota minima, raggio = h·tanα
         const h0 = Math.max(0, r.hmin);
@@ -2826,6 +2850,115 @@
     return { face, regions };
   }
 
+  // ---- [v1.13.0] Ripiego per faccia (come SimpleCAD): OpenCASCADE (nel Worker) legge lo STEP e per ogni faccia restituisce
+  // { valid, area, pts: vertici }. Qui ogni faccia viene attribuita alla regione che tocca più vertici di mesh vicini; una regione è
+  // da sfaccettare se una sua faccia non è valida oppure se l'area letta differisce da quella dei suoi triangoli (faccia valida ma
+  // ritagliata male: anello esterno sbagliato, dominio della B-spline). Le regioni trovate diventano sfaccettate (un triangolo piano per
+  // faccia, sempre valido). Restituisce una copia di seg, gli id cambiati e i conteggi.
+  // regione di una faccia letta da OpenCASCADE: punti presi dentro la faccia (centri dei triangoli della sua tessellazione), ognuno al triangolo
+  // di mesh più vicino, regione a maggioranza. (Provato con i vertici della faccia: sono condivisi con le vicine e l'attribuzione sbagliava.)
+  // distanza al quadrato punto-triangolo (Ericson, Real-Time Collision Detection 5.1.5)
+  function ptTriDist2(p, a, b, c) {
+    const ab = sub(b, a), ac = sub(c, a), ap = sub(p, a), d1 = dot(ab, ap), d2 = dot(ac, ap); let q;
+    if (d1 <= 0 && d2 <= 0) q = a;
+    else { const bp = sub(p, b), d3 = dot(ab, bp), d4 = dot(ac, bp);
+      if (d3 >= 0 && d4 <= d3) q = b;
+      else { const vc = d1 * d4 - d3 * d2;
+        if (vc <= 0 && d1 >= 0 && d3 <= 0) q = add(a, mul(ab, d1 / (d1 - d3)));
+        else { const cp = sub(p, c), d5 = dot(ab, cp), d6 = dot(ac, cp);
+          if (d6 >= 0 && d5 <= d6) q = c;
+          else { const vb = d5 * d2 - d1 * d6;
+            if (vb <= 0 && d2 >= 0 && d6 <= 0) q = add(a, mul(ac, d2 / (d2 - d6)));
+            else { const va = d3 * d6 - d5 * d4;
+              if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) q = add(b, mul(sub(c, b), (d4 - d3) / ((d4 - d3) + (d5 - d6))));
+              else { const den = 1 / (va + vb + vc); q = add(a, add(mul(ab, vb * den), mul(ac, vc * den))); } } } } } }
+    const d = sub(p, q); return dot(d, d);
+  }
+  function regionOfFace(M, seg, pts, preferAnalytic) {
+    const cnt = new Map();
+    for (const p of pts) {
+      // triangolo più vicino per distanza punto-triangolo (con il centro dei triangoli i triangoli grandi "rubavano" i punti ai vicini piccoli)
+      let best = -1, bd = Infinity;
+      for (let t = 0; t < M.nT; t++) {
+        const dx = M.C[3 * t] - p[0], dy = M.C[3 * t + 1] - p[1], dz = M.C[3 * t + 2] - p[2], dc = dx * dx + dy * dy + dz * dz;
+        if (dc > 4 * bd + 1e-9 && dc > 1e-12 && bd < Infinity && Math.sqrt(dc) - Math.sqrt(M.A[t] * 2) > Math.sqrt(bd)) continue;   // scarto rapido
+        const d = ptTriDist2(p, M.P(M.T[3 * t]), M.P(M.T[3 * t + 1]), M.P(M.T[3 * t + 2])); if (d < bd) { bd = d; best = t; }
+      }
+      if (best >= 0) { const id = seg.face[best]; cnt.set(id, (cnt.get(id) || 0) + 1); }
+    }
+    let best = -1, bc = -1; for (const [id, c] of cnt) if (c > bc) { bc = c; best = id; }
+    if (preferAnalytic && best >= 0 && seg.regions[best].type === 'freeform') {   // faccia non valida: si cerca la regione non ancora sfaccettata vicina
+      let b2 = -1, c2 = -1; for (const [id, c] of cnt) if (seg.regions[id].type !== 'freeform' && c > c2) { c2 = c; b2 = id; }
+      if (b2 >= 0) return b2;
+    }
+    return best;
+  }
+  function facetRegionsAt(M, seg, faces, tol) {
+    const ids = new Set(), area = new Map(); let invalid = 0, mismatch = 0;
+    for (const f of faces) {
+      const id = regionOfFace(M, seg, f.pts, !f.valid); if (id < 0) continue;
+      area.set(id, (area.get(id) || 0) + (f.area || 0));
+      if (!f.valid && seg.regions[id].type !== 'freeform') { ids.add(id); invalid++; }
+    }
+    for (const [id, a] of area) {
+      const r = seg.regions[id]; if (r.type === 'freeform' || ids.has(id)) continue;
+      let am = 0, per = 0; for (const t of r.tris) am += M.A[t];
+      per = Math.sqrt(am) * 4;   // stima del perimetro per la tolleranza sull'area
+      if (Math.abs(a - am) > Math.max(0.02 * am, 2 * tol * per)) { ids.add(id); mismatch++; }
+    }
+    const regions = seg.regions.map(r => (ids.has(r.id) && r.type !== 'freeform' && r.tris.length) ? Object.assign({}, r, { type: 'freeform', faceted: true, wasType: r.type }) : r);
+    return { seg: Object.assign({}, seg, { regions }), ids: [...ids], invalid, mismatch };
+  }
+
+  // ---- [v1.13.0] Verifica e ripiego con OpenCASCADE (oc = modulo replicad-opencascadejs, iniettato come manifold: il core resta senza dipendenze)
+  // occCheckStep: legge lo STEP con STEPControl_Reader, BRepCheck_Analyzer su forma e facce, volume, e per ogni faccia area, validità e
+  // alcuni punti DENTRO la faccia (centri dei triangoli della sua tessellazione) per riconoscere la regione di origine.
+  function occCheckStep(oc, text) {
+    oc.FS.writeFile('/m2s_check.step', text);
+    const rd = new oc.STEPControl_Reader();
+    rd.ReadFile('/m2s_check.step');
+    rd.TransferRoots(new oc.Message_ProgressRange());
+    const sh = rd.OneShape();
+    new oc.BRepMesh_IncrementalMesh(sh, 0.5, false, 0.5, false);
+    const az = new oc.BRepCheck_Analyzer(sh, true, false, false), faces = [];
+    const ex = new oc.TopExp_Explorer(sh, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+    for (; ex.More(); ex.Next()) {
+      const f = oc.TopoDS.Face(ex.Current()), g = new oc.GProp_GProps(); oc.BRepGProp.SurfaceProperties(f, g, false, false);
+      const pts = [], T = oc.BRep_Tool.Triangulation(f, new oc.TopLoc_Location(), 0);
+      if (T && !(T.IsNull && T.IsNull())) {
+        const tri = T.get ? T.get() : T, nt = tri.NbTriangles();
+        for (const i of [...new Set([1, Math.ceil(nt / 3), Math.ceil(2 * nt / 3), nt])]) {
+          if (i < 1) continue; const tr = tri.Triangle(i), ps = [1, 2, 3].map(j => tri.Node(tr.Value(j)));
+          pts.push([(ps[0].X() + ps[1].X() + ps[2].X()) / 3, (ps[0].Y() + ps[1].Y() + ps[2].Y()) / 3, (ps[0].Z() + ps[1].Z() + ps[2].Z()) / 3]);
+        }
+      }
+      if (!pts.length) {   // faccia senza tessellazione (area nulla): i suoi vertici
+        const ev = new oc.TopExp_Explorer(f, oc.TopAbs_ShapeEnum.TopAbs_VERTEX, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+        for (; ev.More(); ev.Next()) { const q = oc.BRep_Tool.Pnt(oc.TopoDS.Vertex(ev.Current())); pts.push([q.X(), q.Y(), q.Z()]); }
+      }
+      faces.push({ valid: az.IsValid(f), area: g.Mass(), pts });
+    }
+    const gv = new oc.GProp_GProps(); oc.BRepGProp.VolumeProperties(sh, gv, false, false, false);
+    let solids = 0; const es = new oc.TopExp_Explorer(sh, oc.TopAbs_ShapeEnum.TopAbs_SOLID, oc.TopAbs_ShapeEnum.TopAbs_SHAPE); for (; es.More(); es.Next()) solids++;
+    try { oc.FS.unlink('/m2s_check.step'); } catch (e) { /* già tolto */ }
+    return { ok: true, valid: az.IsValid(sh), volume: Math.abs(gv.Mass()), solids, faces, invalid: faces.filter(f => !f.valid).length };
+  }
+  // stepValidated: esporta, controlla con OpenCASCADE e, finché trova facce non valide o con area diversa dai triangoli della regione,
+  // le sfaccetta (facetRegionsAt) e riesporta (max opts.rounds giri, predefinito 4). Come il ripiego di SimpleCAD, ma per singola regione.
+  function stepValidated(M, seg, oc, opts = {}) {
+    const rounds = [], maxR = opts.rounds || 4; let cur = seg, ex = null, chk = null, faceted = 0;
+    for (let i = 0; i <= maxR; i++) {
+      ex = exportSTEP(M, cur, opts); chk = occCheckStep(oc, ex.text);
+      const step = { faces: ex.faces, occFaces: chk.faces.length, valid: chk.valid, invalid: chk.invalid, volume: chk.volume };
+      if (i === maxR) { rounds.push(step); break; }
+      const r = facetRegionsAt(M, cur, chk.faces, opts.tol || 0.01);
+      step.faceted = r.ids.length; step.mismatch = r.mismatch; rounds.push(step);
+      if (!r.ids.length) break;
+      faceted += r.ids.length; cur = r.seg;
+    }
+    return { text: ex.text, exp: ex, seg: cur, valid: chk.valid, invalid: chk.invalid, volume: chk.volume, meshVolume: Math.abs(M.volume), faces: ex.faces, faceted, rounds };
+  }
+
   // ---- [v1.10.0] Tolleranza automatica ----
   // Se con la tolleranza richiesta restano troppi triangoli "sciolti" (freeform + frammenti di ≤ 4 triangoli), la si alza per gradini
   // (×1,5 ×2,5 ×4 ×8, mai oltre 0,4% della diagonale) e si tiene il tentativo con meno triangoli sciolti: sulle mesh rumorose (scansioni,
@@ -2863,7 +2996,7 @@
     return { M, seg, tol: a ? a.tol : opts.tol };
   }
 
-  const API = { VERSION, parseFile, parseSTL, parseOBJ, parse3MF, buildMesh, segment, segmentAuto, segmentSimpleCAD, exportSTEP, analyse, fitCylinder, fitSphere, fitPlane, fitCone, fitTorus, fitBSpline, detectThread, threadsToCylinders, fixNonManifold, findSelfIntersections, repairSelfIntersections, fitBSplineClosed, reportPdf, fillHoles, features, deviation, surfDist, editRegions, regionStats, resizeHole, holeTarget, HOLE_SIZES, verifyStep };
+  const API = { VERSION, parseFile, parseSTL, parseOBJ, parse3MF, buildMesh, segment, segmentAuto, segmentSimpleCAD, facetRegionsAt, occCheckStep, stepValidated, exportSTEP, analyse, fitCylinder, fitSphere, fitPlane, fitCone, fitTorus, fitBSpline, detectThread, threadsToCylinders, fixNonManifold, findSelfIntersections, repairSelfIntersections, fitBSplineClosed, reportPdf, fillHoles, features, deviation, surfDist, editRegions, regionStats, resizeHole, holeTarget, HOLE_SIZES, verifyStep };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   else root.M2S = API;
 })(typeof self !== 'undefined' ? self : this);
