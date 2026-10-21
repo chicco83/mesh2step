@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — core.js
- * Versione: 1.11.0 — 2026-10-21 18:27 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
+ * Versione: 1.11.1 — 2026-10-21 19:26 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
  * ---------------------------------------------------------------------------
  * Motore indipendente dalla UI (gira nel Web Worker del browser e in Node per i test).
  *   1. Parsing  : STL (binario/ASCII), OBJ, 3MF (zip letto a mano + DecompressionStream)
@@ -20,7 +20,8 @@
   // [2026-10-09 09:53 v1.9.0] const VERSION = '1.8.0';
   // [2026-10-21 14:15 v1.10.0] const VERSION = '1.9.0';
   // [2026-10-21 18:27 v1.11.0] const VERSION = '1.10.0';
-  const VERSION = '1.11.0';
+  // [2026-10-21 19:26 v1.11.1] const VERSION = '1.11.0';
+  const VERSION = '1.11.1';
 
   // ===================== Helper vettoriali (array [x,y,z]) =====================
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -879,11 +880,22 @@
     // (campo di altezze, scarto ≤ tol) a 3, 6, 12, 24… regioni; alla prima rottura si cerca a metà e si chiude la patch.
     if (opts.nurbs !== false) {
       const extent = r => { let mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity]; for (const p of verticesOf(M, r.tris)) for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], p[k]); mx[k] = Math.max(mx[k], p[k]); } return len(sub(mx, mn)); };
-      const weak = new Set();
+      const weak = new Set(), badSag = new Set();
       for (const r of regions) {
         if (!r.tris.length || r.type === 'merged') continue;
         if (r.type === 'freeform') weak.add(r.id);
         else if ((r.type === 'sphere' || r.type === 'cylinder' || r.type === 'torus') && (r.type === 'torus' ? r.R : r.radius) > 4 * extent(r)) weak.add(r.id);
+        else if (r.type === 'sphere' || r.type === 'cylinder') {
+          // [2026-10-21 v1.11.1] sfera/cilindro con triangoli lunghi: i vertici stanno sulla superficie ma il punto medio degli spigoli (la corda) è
+          // lontano (fino a 13 mm su una "sfera" R 97 del file Plenum): la mesh non è su quella superficie e gli spigoli di bordo esportati non
+          // stanno sulla faccia (STEP non valido). Soglia max(3·tol, 3% del raggio): le sfere/cilindri tessellati in modo grossolano restano.
+          let sag = 0;
+          for (const t of r.tris) for (let k = 0; k < 3; k++) {
+            const m = mul(add(M.P(M.T[3 * t + k]), M.P(M.T[3 * t + (k + 1) % 3])), 0.5);
+            sag = Math.max(sag, r.type === 'sphere' ? Math.abs(r.radius - len(sub(m, r.center))) : (() => { const d = sub(m, r.origin); return Math.abs(r.radius - len(sub(d, mul(r.axis, dot(d, r.axis))))); })());
+          }
+          if (sag > Math.max(3 * tol, 0.03 * r.radius)) { weak.add(r.id); badSag.add(r.id); }
+        }
       }
       for (const r of regions) {   // piccoli piani incastrati tra regioni deboli
         if (r.type !== 'plane' || r.tris.length > 6 || !r.tris.length) continue;
@@ -947,22 +959,37 @@
       // assorbimento dei frammenti: regioni piccole (≤ 150 triangoli, non B-spline) confinanti con una patch e con tutti i vertici entro
       // 2·tolG dalla sua superficie (scarto verticale `dist`) ne fanno parte (prima restavano piani/freeform da pochi triangoli lungo la patch)
       const absorb = tolG => {
+        // [2026-10-21 v1.11.1] prima: soglia 2·tolG e nessun rifit (la patch restava quella di prima e i vertici assorbiti arrivavano fino a
+        // 0,15 mm da una superficie con err 0,03: gli spigoli di bordo non stavano sulla faccia e OpenCASCADE la segnava non valida).
+        // Ora: soglia tolG, poi la B-spline si rifitta su tutti i triangoli della patch; se il rifit non sta in tolG l'assorbimento si annulla.
         for (let pass = 0; pass < 3; pass++) {
-          let any = false;
+          const added = new Map();   // patch -> frammenti aggiunti in questa passata
           for (const r of regions) {
             if (r.type === 'bspline' || r.type === 'merged' || r.type === 'thread' || !r.tris.length || r.tris.length > 150) continue;
-            const cands = new Set(); for (const t of r.tris) for (let j = 0; j < 3; j++) { const u = M.nb[3 * t + j]; if (u >= 0 && face[u] !== r.id && regions[face[u]].type === 'bspline' && regions[face[u]].dist) cands.add(face[u]); }
+            const cands = new Set(); for (const t of r.tris) for (let j = 0; j < 3; j++) { const u = M.nb[3 * t + j]; if (u >= 0 && face[u] !== r.id && regions[face[u]].type === 'bspline' && regions[face[u]].dist && !regions[face[u]].closedU) cands.add(face[u]); }
             let best = null, bd = Infinity;
-            for (const bid of cands) { const B = regions[bid]; let d = 0; for (const t of r.tris) for (let k = 0; k < 3; k++) d = Math.max(d, B.dist(M.P(M.T[3 * t + k]))); if (d <= 2 * tolG && d < bd) { bd = d; best = B; } }
+            for (const bid of cands) { const B = regions[bid]; let d = 0; for (const t of r.tris) for (let k = 0; k < 3; k++) d = Math.max(d, B.dist(M.P(M.T[3 * t + k]))); if (d <= tolG && d < bd) { bd = d; best = B; } }
             if (!best) continue;
+            if (!added.has(best)) added.set(best, []);
+            added.get(best).push({ r, type: r.type, tris: r.tris });
             for (const t of r.tris) face[t] = best.id;
-            best.tris = best.tris.concat(r.tris); r.type = 'merged'; r.tris = []; any = true;
+            best.tris = best.tris.concat(r.tris); r.type = 'merged'; r.tris = [];
           }
-          if (!any) break;
+          if (!added.size) break;
+          for (const [B, frs] of added) {
+            const F = fitBSpline(M, B.tris, tolG);
+            if (F) { Object.assign(B, bsFields(F)); continue; }
+            const back = new Set(frs.flatMap(x => x.tris));   // rifit fallito: si restituiscono i frammenti
+            B.tris = B.tris.filter(t => !back.has(t));
+            for (const x of frs) { x.r.type = x.type; x.r.tris = x.tris; for (const t of x.tris) face[t] = x.r.id; }
+          }
         }
       };
       growPatches(weak, adj, tol);
       absorb(tol);
+      // [2026-10-21 v1.11.1] provato e scartato: trasformare in freeform le sfere/cilindri con corde lontane non assorbiti (file Plenum: 427 → 1911 facce
+      // per togliere 3 facce non valide). Restano quadriche; sono solo candidate alle patch (weak).
+      // for (const id of badSag) { const r = regions[id]; if ((r.type === 'sphere' || r.type === 'cylinder') && r.tris.length) r.type = 'freeform'; }
       // seconda passata con 2·tol solo sulle freeform rimaste (altrimenti restano come una faccia per triangolo): lo scarto resta in `err` e nella mappa di deviazione
       {
         const w2 = new Set(regions.filter(r => r.type === 'freeform' && r.tris.length).map(r => r.id));
@@ -1293,7 +1320,20 @@
 
   // ---- Superficie B-spline bicubica come campo di altezze sopra il piano medio della regione ----
   function fitBSpline(M, tris, tol) {
+    // [2026-10-21 v1.11.1] prima: const pts = verticesOf(M, tris);  (solo i vertici: con triangoli lunghi e sottili la superficie poteva scostarsi
+    // di millimetri lungo gli spigoli, tra un vertice e l'altro, e gli spigoli di bordo non stavano più sulla faccia: STEP non valido).
+    // Ora anche punti interni agli spigoli più lunghi di 1/16 dell'estensione della patch (fino a 8 per spigolo).
     const pts = verticesOf(M, tris); if (pts.length < 16) return null;
+    {
+      let mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+      for (const p of pts) for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], p[k]); mx[k] = Math.max(mx[k], p[k]); }
+      const step = len(sub(mx, mn)) / 16, seenE = new Set();
+      if (step > 0) for (const t of tris) for (let k = 0; k < 3; k++) {
+        const e = M.triEdge[3 * t + k]; if (seenE.has(e)) continue; seenE.add(e);
+        const a = M.P(M.E0[e]), b = M.P(M.E1[e]), L = len(sub(b, a)), n = Math.min(8, Math.floor(L / step));
+        for (let i = 1; i <= n; i++) pts.push(add(a, mul(sub(b, a), i / (n + 1))));
+      }
+    }
     const pl = fitPlane(pts);
     let n = pl.normal, mn = [0, 0, 0];
     for (const t of tris) mn = add(mn, mul([M.N[3 * t], M.N[3 * t + 1], M.N[3 * t + 2]], M.A[t]));
@@ -1303,7 +1343,8 @@
     const uvh = pts.map(p => { const d = sub(p, pl.origin); return [dot(d, e1), dot(d, e2), dot(d, n)]; });
     let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
     for (const [u, v] of uvh) { u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); }
-    const pad = 0.02 * Math.max(u1 - u0, v1 - v0); u0 -= pad; u1 += pad; v0 -= pad; v1 += pad;
+    // [2026-10-21 v1.11.1] prima: pad = 0.02 (la proiezione al punto più vicino dei vertici di bordo poteva uscire dal dominio della superficie)
+    const pad = 0.1 * Math.max(u1 - u0, v1 - v0); u0 -= pad; u1 += pad; v0 -= pad; v1 += pad;
     // base B-spline cubica uniforme bloccata con nc punti di controllo
     const basis = (nc, t) => {   // t in [0,1] -> pesi non nulli
       const segs = nc - 3, x = Math.min(segs - 1e-9, Math.max(0, t * segs)), k = Math.floor(x);
@@ -2040,7 +2081,10 @@
     const uLen = E('(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.MILLI.,.METRE.))');
     const uAng = E('(NAMED_UNIT(*)PLANE_ANGLE_UNIT()SI_UNIT($,.RADIAN.))');
     const uSol = E('(NAMED_UNIT(*)SI_UNIT($,.STERADIAN.)SOLID_ANGLE_UNIT())');
-    const unc = E(`UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(${stepNum(tol)}),${uLen},'distance_accuracy_value','confusion accuracy')`);
+    // [2026-10-21 v1.11.1] incertezza = max(tol, 1,2 × scarto massimo delle B-spline): le patch della seconda passata (2·tol) hanno spigoli fino a 2·tol
+    // dalla superficie e con l'incertezza = tol il lettore li considerava fuori faccia. prima: LENGTH_MEASURE(${'$'}{stepNum(tol)})
+    const tolU = Math.max(tol, ...seg.regions.filter(r => r.type === 'bspline' && r.tris.length).map(r => 1.2 * (r.err || 0)));
+    const unc = E(`UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(${stepNum(tolU)}),${uLen},'distance_accuracy_value','confusion accuracy')`);
     const gctx = E(`(GEOMETRIC_REPRESENTATION_CONTEXT(3)GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((${unc}))GLOBAL_UNIT_ASSIGNED_CONTEXT((${uLen},${uAng},${uSol}))REPRESENTATION_CONTEXT('Context3D','3D context'))`);
 
     // --- id di "faccia B-rep": regioni analitiche intere; freeform = un triangolo per faccia ---
@@ -2110,6 +2154,10 @@
     const vertexPoint = v => { if (!vtx.has(v)) vtx.set(v, E(`VERTEX_POINT('',${pt(M.P(v))})`)); return vtx.get(v); };
     const curvedRadii = e => M.ET[e].map(t => faceInfo[fid[t]].region).filter(r => r.type === 'cylinder' || r.type === 'sphere').map(r => r.radius);  // (coni gestiti sotto con ctrX/rX)
     const edgeStats = { line: 0, circle: 0, polyline: 0 };
+    // [2026-10-21 v1.11.1] due catene con gli stessi estremi (faccia sottile tra due bordi quasi allineati) non devono diventare entrambe LINE:
+    // la faccia avrebbe due spigoli coincidenti e area nulla (OpenCASCADE: faccia non valida). Restano polilinee.
+    const pairN = new Map(); for (const ch of chains) if (!ch.closed) { const a = ch.verts[0], b = ch.verts[ch.verts.length - 1], k = a < b ? a + ',' + b : b + ',' + a; pairN.set(k, (pairN.get(k) || 0) + 1); }
+    const sharedEnds = ch => { const a = ch.verts[0], b = ch.verts[ch.verts.length - 1]; return (pairN.get(a < b ? a + ',' + b : b + ',' + a) || 0) > 1; };
     chains.forEach(ch => {
       const pts = ch.verts.map(v => M.P(v)), p0 = pts[0], pN = pts[pts.length - 1];
       const v0 = vertexPoint(ch.verts[0]), v1 = vertexPoint(ch.verts[ch.verts.length - 1]);
@@ -2117,7 +2165,7 @@
       // retta: tutti i punti entro tolleranza dalla congiungente estremi
       if (!ch.closed) {
         const d = norm(sub(pN, p0));
-        let ok = len(sub(pN, p0)) > 0;
+        let ok = len(sub(pN, p0)) > 0 && !(sharedEnds(ch) && pts.length > 2);   // [v1.11.1] vedi sharedEnds
         for (const p of pts) { const w = sub(p, p0); if (len(sub(w, mul(d, dot(w, d)))) > tol * 0.5) { ok = false; break; } }
         if (ok) { curve = E(`LINE('',${pt(p0)},${E(`VECTOR('',${dir(d)},${stepNum(len(sub(pN, p0)))})`)})`); edgeStats.line++; }
       }
@@ -2144,7 +2192,29 @@
                 if (Math.abs(rr - c.r) <= tol) { ctrX = add(o, mul(rg.axis, h)); rX = rr; }
               }
             }
-            if (err <= tol && supported) {
+            // [2026-10-21 v1.11.1] controllo dell'arco: prima bastavano 4 punti complanari entro tol da un cerchio. Sui bordi delle superfici libere
+            // nascevano cerchi falsi: anelli sottili "andata e ritorno" presi per cerchi interi (R 77 mm per un anello lungo 3,9 mm) e archi percorsi
+            // nel verso sbagliato; OpenCASCADE allargava la tolleranza dello spigolo fino a decine di mm e la faccia non era valida.
+            // Ora: angoli crescenti lungo la catena (passo < 90°), giro completo ≈ 360° per le catene chiuse e, se nessuna faccia vicina è un
+            // cilindro/sfera/cono dello stesso raggio, freccia di ogni corda ≤ tol (la polilinea segue davvero l'arco).
+            let arcOK = false;
+            {
+              const az = ax, ux = perp(az), wx = cross(az, ux), cc0 = ctrX || ctr, rr0 = rX || c.r;
+              const th = pts.map(p => { const d = sub(p, cc0); return Math.atan2(dot(d, wx), dot(d, ux)); });
+              let sw = 0, sgn = 0, okA = true, dmax = 0;
+              for (let i = 0; i + 1 < th.length; i++) {
+                let dt = th[i + 1] - th[i]; while (dt > Math.PI) dt -= 2 * Math.PI; while (dt < -Math.PI) dt += 2 * Math.PI;
+                if (Math.abs(dt) < 1e-12) continue;
+                const sg = Math.sign(dt); if (sgn && sg !== sgn) { okA = false; break; } sgn = sg;
+                sw += dt; dmax = Math.max(dmax, Math.abs(dt));
+              }
+              if (okA && dmax < Math.PI / 2) {
+                const strong = !!ctrX || radii.some(r => Math.abs(r - c.r) <= tol);
+                const sagOK = strong || rr0 * (1 - Math.cos(dmax / 2)) <= tol;
+                arcOK = sagOK && (ch.closed ? Math.abs(Math.abs(sw) - 2 * Math.PI) < 0.1 : Math.abs(sw) < 2 * Math.PI - 1e-3);
+              }
+            }
+            if (err <= tol && supported && arcOK) {
               // verso antiorario rispetto all'asse = verso di percorrenza della catena
               let turn = 0; for (let i = 0; i + 1 < pts.length; i++) turn += dot(cross(sub(pts[i], ctr), sub(pts[i + 1], ctr)), ax);
               const zax = turn >= 0 ? ax : mul(ax, -1);
@@ -2172,18 +2242,44 @@
     faceInfo.forEach((fi, f) => {
       const r = fi.region, tset = new Set(fi.tris);
       // semi-spigoli di bordo orientati come i triangoli (CCW visto da fuori)
-      const half = new Map();   // vertice di partenza -> lista [a,b,e]
+      const half = new Map();   // vertice di partenza -> lista [a,b,e,t,k]
+      const isB = (t, k) => { const e = M.triEdge[3 * t + k]; return isTopo[e] && !(M.ET[e].length === 2 && M.ET[e].every(x => tset.has(x))); };
       for (const t of fi.tris) for (let k = 0; k < 3; k++) {
-        const e = M.triEdge[3 * t + k]; if (!isTopo[e]) continue;
-        if (M.ET[e].length === 2 && M.ET[e].every(x => tset.has(x))) continue;
+        if (!isB(t, k)) continue;
         const a = M.T[3 * t + k], b = M.T[3 * t + (k + 1) % 3];
-        if (!half.has(a)) half.set(a, []); half.get(a).push([a, b, e]);
+        if (!half.has(a)) half.set(a, []); half.get(a).push([a, b, M.triEdge[3 * t + k], t, k]);
       }
+      /* [2026-10-21 v1.11.1] versione precedente: il successore era un qualsiasi semi-spigolo libero che parte da b. In un vertice "a farfalla"
+         (la faccia tocca se stessa in un punto: frequente nelle patch B-spline fatte di più regioni) due anelli si scambiavano pezzi e
+         nascevano anelli incrociati o aperti (OpenCASCADE: SelfIntersectingWire / NotClosed / InvalidImbricationOfWires).
       const used = new Set(), loops = [];
       for (const [, list] of half) for (const h0 of list) {
         if (used.has(h0)) continue;
         const loop = []; let h = h0;
         while (h && !used.has(h)) { used.add(h); loop.push(h); h = (half.get(h[1]) || []).find(x => !used.has(x)); }
+        loops.push(loop);
+      }
+      */
+      // Successore canonico: si gira attorno a b dentro la faccia (triangolo per triangolo attraverso gli spigoli interni) fino al primo
+      // spigolo di bordo che parte da b: è il bordo che segue davvero, anche quando in b partono più semi-spigoli di bordo.
+      const succ = h => {
+        let cur = h[3], j = h[4];
+        for (let g = 0; g < 256; g++) {
+          const jn = (j + 1) % 3;
+          if (isB(cur, jn)) { const a2 = M.T[3 * cur + jn]; return (half.get(a2) || []).find(x => x[3] === cur && x[4] === jn) || null; }
+          const u = M.nb[3 * cur + jn]; if (u < 0 || !tset.has(u)) return null;
+          const c = M.T[3 * cur + (jn + 1) % 3], b2 = M.T[3 * cur + jn];
+          let m = -1; for (let q = 0; q < 3; q++) if (M.T[3 * u + q] === c && M.T[3 * u + (q + 1) % 3] === b2) m = q;
+          if (m < 0) return null;
+          cur = u; j = m;
+        }
+        return null;
+      };
+      const used = new Set(), loops = [];
+      for (const [, list] of half) for (const h0 of list) {
+        if (used.has(h0)) continue;
+        const loop = []; let h = h0;
+        while (h && !used.has(h)) { used.add(h); loop.push(h); h = succ(h) || (half.get(h[1]) || []).find(x => !used.has(x)); }
         loops.push(loop);
       }
       const bounds = loops.map(loop => {

@@ -1,5 +1,5 @@
 # CONTEXT — Mesh2STEP
-Versione documento: 1.11.0 — 2026-10-21 18:27
+Versione documento: 1.11.1 — 2026-10-21 19:26
 
 ## Scopo
 Web app che converte mesh triangolari (STL, OBJ, 3MF) in file STEP con **geometria CAD reale**:
@@ -85,6 +85,7 @@ index.html ── src/app.js (UI, viewer three.js, i18n, editing, export, API in
 | 2026-10-05 | Cowork cloud | Analisi del sito di riferimento, v1.0.0 (piani, cilindri, sfere, STEP), commit `729f9ed` caricato dall'utente |
 | 2026-10-06 mattina | Cowork cloud | v1.0.1 README completo; v1.1.0–1.3.0 tutte le migliorie (commit `e1e10bb`, `61c8f81`), consegnate come git bundle perché la sessione non poteva fare push; pubblicate dall'utente; Pages verificato online |
 | 2026-10-06 14:10 | Cowork cloud | Documentazione per riprendere il lavoro da Claude Code |
+| 2026-10-21 | Claude Code (cloud) | v1.11.1: indagine STEP non validi (cerchi falsi, B-spline tra i vertici, assorbimento senza rifit): scoop valido, Plenum 49 → 8 facce non valide. symplecad non accessibile |
 | 2026-10-21 | Claude Code (cloud) | v1.11.0: file reale dell'utente (Plenum, 22 394 triangoli): stadio 4d-bis patch B-spline, filettature ≥ 2,5 giri, tolleranza automatica più veloce; STEP organici non validi in OCC (noto) |
 | 2026-10-21 | Claude Code (cloud) | v1.10.0: tolleranza automatica e robustezza al rumore (troppi triangoli mantenuti) |
 | 2026-10-09 | Claude Code (cloud) | v1.9.0: **Verifica STEP** nell'app (`verifyStep`, comando Worker `verify`, `tests/test_verify.js`) |
@@ -92,7 +93,7 @@ index.html ── src/app.js (UI, viewer three.js, i18n, editing, export, API in
 | 2026-10-07 | Claude Code (locale) | v1.3.1–1.3.2: colori per tipo, selezione, deviazione B-spline, fix CI, prova UI nel browser integrato. v1.4.0: filettature→cilindro, sfere spurie, sfera/toro completi, non-manifold, report PDF. v1.4.1: primo avvio reale dell'exe su Windows 11 (bug risorse con backslash corretto) |
 
 ## Problemi aperti
-- **STEP organici non validi in OpenCASCADE** (1.11.0): facce B-spline/sfera con più anelli su parti libere a guscio (file Plenum 49/473 facce; `scoop.step` in `tests/known_invalid.txt`). Da indagare con BRepCheck_Wire/pcurve.
+- **STEP organici non validi in OpenCASCADE**: dopo la 1.11.1 restano 8 facce su ~540 nel file Plenum (5 B-spline, 3 sfere) per triangoli molto lunghi; volume OCC −12%. `scoop` risolto.
 - Modifica foro (1.8.0): la «filettatura» è foro di maschiatura + etichetta, non elica; da valutare un campione con foro cieco/punta conica. «Verifica STEP» (1.9.0) è un controllo leggero, non sostituisce OpenCASCADE.
 - App Windows: da provare «Apri con…»/trascinamento sull'exe e l'avvio su un PC senza runtime WebView2.
 - Pulsante «Converti in STEP»: fatto nel repo 3D STL Multipart Maker v0.6.2-beta (2026-10-07), non provato dalla versione Windows di quel programma.

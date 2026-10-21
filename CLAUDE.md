@@ -1,5 +1,5 @@
 # CLAUDE.md — Mesh2STEP
-Versione: 1.11.0 — 2026-10-21 18:27
+Versione: 1.11.1 — 2026-10-21 19:26
 <!-- [2026-10-06 14:10] versione precedente (2026-10-06 13:45, commit 61c8f81): solo regole di versioning,
      documenti, test, git e progetto. Ora anche stato, ambiente, mappa del codice, insidie e prossimi passi
      per riprendere il lavoro da Claude Code. Le regole precedenti sono riportate invariate qui sotto. -->
@@ -14,12 +14,12 @@ Replica clean-room di mesh2solid.thavision.com con le funzioni "Pro" gratis e va
 - Repo: `https://github.com/chicco83/mesh2step` — sito: `https://chicco83.github.io/mesh2step/` (Pages da `main` / root)
 - Copia locale dell'utente: `G:\Il mio Drive\CRISTIANO\VIBE CODING\mesh2step` (cartella Google Drive)
 
-## 2. Stato al 2026-10-21 18:27
+## 2. Stato al 2026-10-21 19:26
 | Voce | Stato |
 |---|---|
-| Versione | **1.11.0** (branch di lavoro `ccr-b99c727f-y1lwzj`; v1.10.0 `3ca60a5`, v1.9.0 `6903a59`) — CI e Pages da controllare |
+| Versione | **1.11.1** (branch di lavoro `ccr-b99c727f-y1lwzj`; v1.11.0 `d201774`, v1.10.0 `3ca60a5`) — CI e Pages da controllare |
 | Sito Pages | ✅ online alla 1.4.0, provato il 2026-10-07: bolt_m6 (opzione filettatura→cilindro: 5 facce, 2 cilindri), PDF, toro (2 facce toroidali), service worker attivo, console pulita. Provati in locale (1.3.2–1.4.0): tema chiaro/scuro, selezione, unione/annulla, deviazione, riparazione, export STEP/STL/OBJ |
-| Test core + OpenCASCADE | 28 STEP: 27 `valid=True` + `scoop` noto non valido (`tests/known_invalid.txt`) (20 + `noisy_plate`/`noisy_fillet`/`scoop` + 5 da `test_hole.js`: `plate_hole_{clearance,tap,thread,diameter}`, `countersink_tap`); `test_autotol.js`, `test_verify.js`, `test_hole.js`, `test_repair.js`, `test_pdf.js`, `test_selfint.js`, `test_devthr.js`, `test_selfrepair.js` ok (vedi §6) |
+| Test core + OpenCASCADE | 28 STEP tutti `valid=True` (`tests/known_invalid.txt` vuoto dalla 1.11.1) (20 + `noisy_plate`/`noisy_fillet`/`scoop` + 5 da `test_hole.js`: `plate_hole_{clearance,tap,thread,diameter}`, `countersink_tap`); `test_autotol.js`, `test_verify.js`, `test_hole.js`, `test_repair.js`, `test_pdf.js`, `test_selfint.js`, `test_devthr.js`, `test_selfrepair.js` ok (vedi §6) |
 | CI GitHub (`ci.yml`) | ✅ verde sui push 1.5.0, 1.5.1 e 1.6.0 (test core, OpenCASCADE, riparazione, PDF, auto-intersezioni, deviazione filetti); dalla 1.7.0 anche `test_selfrepair.js` |
 | App Windows (`desktop/`) | ✅ provata su Windows 11 il 2026-10-07 con la build CI 1.4.1 (WebView2 154): avvio, apertura file da argomento, analisi, export STEP/PDF/STL salvati su disco (STEP rivalidati con OCP: `valid=True`). Bug trovato e corretto: risorse in sottocartelle (backslash in `RecursiveDir`). **Non provati**: «Apri con…»/trascinamento sull'exe, SmartScreen su altro PC, installazione pulita senza WebView2 |
 | Migliorie | stato per voce in `IMPROVEMENTS.md` (✅ / 🟡 parziale / ⏸️ rinviata) |
@@ -127,7 +127,8 @@ Per l'interfaccia: prova nel browser caricamento, analisi, selezione, modifica/a
 | block / open_block_riparata | 11 piani + 2 cilindri | 32351,77 |
 | rounded_plate | 6 piani + 5 cilindri | 11426,19 |
 | dome | 6 piani + 1 sfera | 12841,46 |
-| bump | 5 piani + 1 B-spline | 8799,84 |
+| bump | 5 piani + 1 B-spline | 8800,11 (1.11.1; prima 8799,84) |
+| scoop | piani + patch B-spline (≈ 100 facce lette da OCC) | ≈ 6651,96 (mesh 6713,78) |
 | vase | 2 piani + 1 B-spline **chiusa** (periodica in angolo) | 27419,14 (mesh 27407,17) |
 | vase_bent | 2 piani + 1 B-spline chiusa 24×18 (asse incurvato) | 21105,66 (mesh 21082,44) |
 | overlap_pin | 2 solidi sovrapposti (non riparato: 8 piani + 1 cilindro) | 13507,96 (doppio conteggio) |
@@ -157,10 +158,11 @@ Tutti devono essere `valid=True`; `check_step.py` esce con codice 1 altrimenti.
 - **`desktop/build-desktop.sh`**: nel working tree su Google Drive perde il bit eseguibile (100644); prima di committarlo `git update-index --chmod=+x desktop/build-desktop.sh`, altrimenti la CI (`./desktop/build-desktop.sh`) fallisce.
 - **Mesh rumorose**: la soglia d'angolo fissa (1°) frantuma piani/cilindri; usare `tiltSin/tiltCos` (rumore ammesso per triangolo) e rifittare piano/asse mentre la regione cresce. Provare sempre con `noisy_*` e con `tol` iniziale 0,01 (default dell'app).
 - **Superfici libere**: quadriche a raggio variabile in catena = mosaico organico (stadio 4d-bis), non raccordi; un «filetto» con pochi giri su una superficie ondulata è un falso positivo (servono ≥ 2,5 giri). Il file reale dell'utente (GPU fan plenum) è il banco di prova: non è nel repo, chiedere di nuovo se serve.
+- **STEP non validi**: diagnosticare con la tolleranza degli spigoli letti da OCC (> tol = spigolo fuori faccia). Cause già viste: cerchi falsi su catene di 4 punti, B-spline controllate solo nei vertici con triangoli lunghi, frammenti assorbiti senza rifit, dominio B-spline troppo stretto.
 - **Timestamp**: usare l'ora reale (`Get-Date` / `date`), mai orari stimati.
 
 ## 8. Prossimi passi (in ordine di priorità)
-**PRIORITÀ**: STEP organici (patch B-spline) non validi in OpenCASCADE: indagare le facce con più anelli (file Plenum 49/473; `scoop.step`); strumenti: `BRepCheck_Face` (IntersectWires/ClassifyWires/OrientationOfWires) e script di diagnosi come quello descritto in CHANGELOG 19.
+**PRIORITÀ**: file Plenum: restano 8 facce non valide su ~540 (sfere/patch con triangoli lunghissimi, corde fino a 13 mm dalla superficie) e volume OCC −12%. Strumenti: `BRepCheck_Face`, `ShapeAnalysis_Wire(wire, face, prec)`, tolleranza degli spigoli dopo la lettura (`BRep_Tool.Tolerance`): uno spigolo con tolleranza ≫ tol è lontano dalla sua faccia. Repo `Igsova/symplecad` non accessibile: chiedere accesso/nome giusto.
 Fatti il 2026-10-21 (v1.11.0): stadio 4d-bis (patch B-spline per superfici libere), filettature ≥ 2,5 giri, auto-tolleranza più veloce.
 Fatti il 2026-10-21 (v1.10.0): tolleranza automatica + robustezza al rumore (piani/cilindri/tori/fusione). Idee non fatte, dall'analisi di Plasticity (PolySplines: patch NURBS G2 da mesh, solo tier Studio): patch B-spline per le zone freeform aperte con tolleranza maggiore; decimazione delle zone sfaccettate residue. «SymplCAD» non è stato trovato online (nome da confermare).
 Fatti il 2026-10-09 (v1.9.0): Verifica STEP nell'app (controllo leggero). Dal confronto col sito di riferimento non resta nulla di aperto tranne «Apri in Fusion» (impossibile da browser) e «Adattamento alle superfici originali» (funzione poco chiara).

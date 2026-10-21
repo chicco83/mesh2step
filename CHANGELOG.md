@@ -1,5 +1,15 @@
 # CHANGELOG — Mesh2STEP
-Versione documento: 1.11.0 — 2026-10-21 18:27
+Versione documento: 1.11.1 — 2026-10-21 19:26
+
+## 20. [1.11.1] — 2026-10-21 19:26 — Indagine sugli STEP non validi: tre cause trovate e corrette
+Diagnosi con OpenCASCADE (`BRepCheck_Face`, `BRepCheck_Wire`, `ShapeAnalysis_Wire`, tolleranze degli spigoli dopo la lettura): le facce non valide avevano spigoli con tolleranza allargata dal lettore fino a decine di mm, cioè spigoli lontani dalla superficie della faccia.
+- **Cerchi falsi** sui bordi delle superfici libere: bastavano 4 punti complanari entro tol da un cerchio. Nascevano cerchi interi per anelli sottili «andata e ritorno» (R 77 mm per un anello lungo 3,9 mm) e archi nel verso sbagliato. Ora l'arco deve avere angoli crescenti (passo < 90°), giro di 360° se chiuso e, se nessuna faccia vicina è un cilindro/sfera/cono di quel raggio, freccia di ogni corda ≤ tol.
+- **Patch B-spline che si scostano tra i vertici**: l'adattamento controllava solo i vertici; con triangoli lunghi la superficie si allontanava di millimetri lungo gli spigoli. Ora `fitBSpline` usa anche punti interni agli spigoli lunghi (fino a 8 per spigolo) e il dominio ha un margine del 10% (era 2%: la proiezione dei vertici di bordo usciva dal dominio).
+- **Assorbimento senza rifit**: i frammenti assorbiti in una patch potevano stare a 2–4·tol dalla superficie (che non veniva rifittata). Ora soglia tol e rifit della patch; se il rifit non sta in tolleranza l'assorbimento si annulla. L'incertezza dello STEP vale max(tol, 1,2 × scarto massimo delle B-spline).
+- Anche: successore canonico negli anelli di bordo (si gira attorno al vertice dentro la faccia: nessuno scambio di pezzi tra anelli nei vertici «a farfalla»); due catene con gli stessi estremi non diventano entrambe LINE (faccia degenere); sfere/cilindri con corde lontane (> max(3·tol, 3% R)) sono candidati alle patch.
+- Risultati: **`scoop.step` ora valido** (era in `tests/known_invalid.txt`, ora vuoto): 28/28 STEP validi. File Plenum dell'utente: facce non valide **49 → 8** su ~540 (427 facce in Mesh2STEP, tolleranza automatica 0,102). **Non ancora valido**: restano 5 facce B-spline e 3 sferiche; volume OCC 44 180 contro 50 380 della mesh (−12%). Causa residua: sfere/patch con triangoli molto lunghi (corde a 13 mm dalla superficie su una «sfera» R 97). Provato e scartato: trasformarle in freeform (427 → 1 911 facce per 3 facce in meno).
+- Variazioni nei campioni: `bump` volume 8 800,11 (era 8 799,84) per il nuovo margine del dominio; gli altri invariati.
+- Progetto `Igsova/symplecad`: non accessibile da questa sessione (GitHub risponde 404 / clone con credenziali: privato o nome diverso), non analizzato.
 
 ## 19. [1.11.0] — 2026-10-21 18:27 — Superfici libere: patch B-spline al posto di mosaici di quadriche (file «80mm MI_XX GPU Fan Plenum»)
 Il file dell'utente (staffa/condotto da 22 394 triangoli: flangia con fori, pareti piane, testo in rilievo e una «scoop» curva con triangoli lunghi e sottili) con i valori predefiniti dava **4 529 facce** (tolleranza 0,017): la scoop diventava centinaia di sfere e cilindri di raggio enorme (R fino a 2 758 mm su regioni di pochi mm) e di freeform triangolo per triangolo.
