@@ -1,5 +1,5 @@
 # Mesh2STEP
-Versione: 1.10.0 — 2026-10-21 14:15
+Versione: 1.11.0 — 2026-10-21 18:27
 <!-- [2026-10-06 13:45] Versione precedente 1.0.1 (2026-10-06 13:10): README delle funzioni v1.0
      (piani, cilindri, sfere); aggiornato con tutte le funzioni v1.1–v1.3. -->
 
@@ -79,6 +79,7 @@ raggi di toro, cilindri coassiali sulla stessa retta — ogni modifica solo se l
 | **Selezione** | Singola o multipla (pulsante, Shift/Ctrl+clic) |
 | **Converti / unisci** | In piano, cilindro, cono, sfera, toro, B-spline, freeform o *Automatico* con scarto massimo scelto |
 | **Annulla** | 20 livelli |
+| **Patch B-spline libere** | Zone lisce a forma libera (anche a guscio, su più di 75°) raggruppate in patch B-spline per adiacenza con controllo dello scarto; catene di quadriche a raggio variabile riconosciute come mosaico; assorbimento dei frammenti |
 | **Tolleranza automatica** | Alza la tolleranza a gradini se restano troppi triangoli sfaccettati (mesh rumorose/grossolane); riconoscimento robusto al rumore (soglia d'angolo, rifit del piano, asse da toppa, fusione geometrica, assorbimento dei frammenti) |
 | **Corpi** | Includi/escludi e rinomina; il nome va nello STEP |
 | **Modifica foro** | Cambia il Ø di un foro cilindrico o filetto interno: gioco / maschiatura M2–M16, etichetta filetto, Ø libero; controllo collisioni; Annulla ripristina la mesh |

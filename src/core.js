@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — core.js
- * Versione: 1.10.0 — 2026-10-21 14:15 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
+ * Versione: 1.11.0 — 2026-10-21 18:27 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
  * ---------------------------------------------------------------------------
  * Motore indipendente dalla UI (gira nel Web Worker del browser e in Node per i test).
  *   1. Parsing  : STL (binario/ASCII), OBJ, 3MF (zip letto a mano + DecompressionStream)
@@ -19,7 +19,8 @@
   // [2026-10-08 v1.8.0] const VERSION = '1.7.0';
   // [2026-10-09 09:53 v1.9.0] const VERSION = '1.8.0';
   // [2026-10-21 14:15 v1.10.0] const VERSION = '1.9.0';
-  const VERSION = '1.10.0';
+  // [2026-10-21 18:27 v1.11.0] const VERSION = '1.10.0';
+  const VERSION = '1.11.0';
 
   // ===================== Helper vettoriali (array [x,y,z]) =====================
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -870,6 +871,108 @@
       }
     }
 
+    // ---- 4d-bis. [v1.11.0 2026-10-21] PATCH B-SPLINE PER SUPERFICI LISCE "DEBOLI" ----
+    // Una superficie liscia a forma libera (scoop, condotti, carene) con la tolleranza data si spezzava in centinaia di sfere e cilindri
+    // di raggio enorme (R >> dimensione della regione: sono solo curvatura dolce approssimata) o in freeform triangolo per triangolo.
+    // Qui le regioni "deboli" (freeform, quadriche con R > 4× la loro estensione, piccoli piani ≤ 6 triangoli accanto a loro) connesse
+    // da diedri < 30° vengono unite a patch B-spline: si aggiungono regioni intere in ordine di adiacenza e si controlla l'adattamento
+    // (campo di altezze, scarto ≤ tol) a 3, 6, 12, 24… regioni; alla prima rottura si cerca a metà e si chiude la patch.
+    if (opts.nurbs !== false) {
+      const extent = r => { let mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity]; for (const p of verticesOf(M, r.tris)) for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], p[k]); mx[k] = Math.max(mx[k], p[k]); } return len(sub(mx, mn)); };
+      const weak = new Set();
+      for (const r of regions) {
+        if (!r.tris.length || r.type === 'merged') continue;
+        if (r.type === 'freeform') weak.add(r.id);
+        else if ((r.type === 'sphere' || r.type === 'cylinder' || r.type === 'torus') && (r.type === 'torus' ? r.R : r.radius) > 4 * extent(r)) weak.add(r.id);
+      }
+      for (const r of regions) {   // piccoli piani incastrati tra regioni deboli
+        if (r.type !== 'plane' || r.tris.length > 6 || !r.tris.length) continue;
+        let n = 0, tot = 0; for (const t of r.tris) for (let j = 0; j < 3; j++) { const u = M.nb[3 * t + j]; if (u < 0 || face[u] === r.id) continue; tot++; if (weak.has(face[u])) n++; }
+        if (tot > 0 && n >= 0.5 * tot) weak.add(r.id);
+      }
+      // secondo livello: quadriche a raggio moderato (R > 2× estensione) che formano una catena liscia di ≥ 4 regioni curve confinanti
+      // (con raggi diversi tra loro) sono un mosaico di una superficie libera, non vere sfere/cilindri: una vera sfera/cilindro confina
+      // con piani o con raccordi, non con una catena di altre quadriche quasi piatte
+      // [2026-10-21 v1.11.0] prima: solo quadriche con R > 2× estensione; ora tutte le sfere/cilindri/tori, ma una catena è "organica" solo se
+      // i raggi variano (max/min > 1,8): una catena di raccordi di un pezzo CAD ha raggi uguali (cilindri e sfere d'angolo di raggio r).
+      const radOf = r => r.type === 'torus' ? r.r : r.radius;
+      const soft2 = new Set();
+      for (const r of regions) if (r.tris.length && !weak.has(r.id) && (r.type === 'sphere' || r.type === 'cylinder' || r.type === 'torus')) soft2.add(r.id);
+      const cand = new Set([...weak, ...soft2]), adj0 = new Map();
+      for (const id of cand) adj0.set(id, new Set());
+      for (let t = 0; t < nT; t++) { const a = face[t]; if (!cand.has(a)) continue; for (let j = 0; j < 3; j++) { const u = M.nb[3 * t + j]; if (u < 0) continue; const b = face[u]; if (b !== a && cand.has(b) && cosDih(t, u) > Math.cos(30 * Math.PI / 180)) { adj0.get(a).add(b); adj0.get(b).add(a); } } }
+      const seen0 = new Set();
+      for (const id of cand) {
+        if (seen0.has(id)) continue;
+        const comp = [id]; seen0.add(id);
+        for (let qi = 0; qi < comp.length; qi++) for (const nb of adj0.get(comp[qi])) if (!seen0.has(nb)) { seen0.add(nb); comp.push(nb); }
+        const rads = comp.filter(c => regions[c].type !== 'freeform' && regions[c].tris.length >= 8).map(c => radOf(regions[c])).filter(x => x > 0);
+        const varied = rads.length >= 2 && Math.max(...rads) / Math.min(...rads) > 1.8;
+        // catena di ≥ 4 regioni curve confinanti (con almeno una già debole o raggi variabili) = mosaico di una superficie libera
+        if (comp.length >= 4 && (varied || comp.some(c => weak.has(c)))) for (const c of comp) weak.add(c);
+      }
+      const adj = new Map();   // regione debole -> regioni deboli confinanti con diedro lieve
+      for (const id of weak) adj.set(id, new Set());
+      for (let t = 0; t < nT; t++) { const a = face[t]; if (!weak.has(a)) continue; for (let j = 0; j < 3; j++) { const u = M.nb[3 * t + j]; if (u < 0) continue; const b = face[u]; if (b !== a && weak.has(b) && cosDih(t, u) > Math.cos(30 * Math.PI / 180)) { adj.get(a).add(b); adj.get(b).add(a); } } }
+      const done = new Set();
+      const regTris = ids => ids.flatMap(i => regions[i].tris);
+      let guardFits = 0;
+      // crescita delle patch con tolleranza tolG sulle regioni di `weakSet` (adiacenza `adjM`)
+      const growPatches = (weakSet, adjM, tolG) => {
+        const ordered = [...weakSet].sort((a, b) => regions[b].tris.length - regions[a].tris.length);
+        for (const seed of ordered) {
+          if (done.has(seed) || !regions[seed].tris.length || guardFits > 600 || regions[seed].type === 'bspline') continue;
+          // ordine di crescita: BFS di regioni dal seme
+          const order = [seed], seen = new Set([seed]);
+          for (let qi = 0; qi < order.length; qi++) for (const nb of adjM.get(order[qi]) || []) if (!seen.has(nb) && !done.has(nb) && regions[nb].tris.length) { seen.add(nb); order.push(nb); }
+          let okN = 0, okB = null, size = 3, failed = false;
+          const tryN = n => { guardFits++; return fitBSpline(M, regTris(order.slice(0, n)), tolG); };
+          while (okN < order.length && !failed) {
+            const n = Math.min(order.length, size), B = tryN(n);
+            if (B) { okN = n; okB = B; if (n === order.length) break; size *= 2; }
+            else {
+              failed = true;
+              let lo = okN, hi = n;   // bisezione tra l'ultimo adattamento riuscito e il primo fallito
+              while (hi - lo > 1 && guardFits <= 600) { const mid = (lo + hi) >> 1, Bm = tryN(mid); if (Bm) { lo = mid; okB = Bm; okN = mid; } else hi = mid; }
+            }
+          }
+          if (!okB || okN < 1) continue;
+          const ids = order.slice(0, okN), tris = regTris(ids);
+          if (tris.length < 16) continue;
+          const id = regions.length; regions.push(Object.assign({ id, type: 'bspline', tris }, bsFields(okB)));
+          for (const i of ids) { regions[i].type = 'merged'; regions[i].tris = []; done.add(i); }
+          for (const t of tris) face[t] = id;
+        }
+      };
+      // assorbimento dei frammenti: regioni piccole (≤ 150 triangoli, non B-spline) confinanti con una patch e con tutti i vertici entro
+      // 2·tolG dalla sua superficie (scarto verticale `dist`) ne fanno parte (prima restavano piani/freeform da pochi triangoli lungo la patch)
+      const absorb = tolG => {
+        for (let pass = 0; pass < 3; pass++) {
+          let any = false;
+          for (const r of regions) {
+            if (r.type === 'bspline' || r.type === 'merged' || r.type === 'thread' || !r.tris.length || r.tris.length > 150) continue;
+            const cands = new Set(); for (const t of r.tris) for (let j = 0; j < 3; j++) { const u = M.nb[3 * t + j]; if (u >= 0 && face[u] !== r.id && regions[face[u]].type === 'bspline' && regions[face[u]].dist) cands.add(face[u]); }
+            let best = null, bd = Infinity;
+            for (const bid of cands) { const B = regions[bid]; let d = 0; for (const t of r.tris) for (let k = 0; k < 3; k++) d = Math.max(d, B.dist(M.P(M.T[3 * t + k]))); if (d <= 2 * tolG && d < bd) { bd = d; best = B; } }
+            if (!best) continue;
+            for (const t of r.tris) face[t] = best.id;
+            best.tris = best.tris.concat(r.tris); r.type = 'merged'; r.tris = []; any = true;
+          }
+          if (!any) break;
+        }
+      };
+      growPatches(weak, adj, tol);
+      absorb(tol);
+      // seconda passata con 2·tol solo sulle freeform rimaste (altrimenti restano come una faccia per triangolo): lo scarto resta in `err` e nella mappa di deviazione
+      {
+        const w2 = new Set(regions.filter(r => r.type === 'freeform' && r.tris.length).map(r => r.id));
+        for (const r of regions) { if (r.type === 'plane' && r.tris.length && r.tris.length <= 60) { let n = 0, tot = 0; for (const t of r.tris) for (let j = 0; j < 3; j++) { const u = M.nb[3 * t + j]; if (u < 0 || face[u] === r.id) continue; tot++; if (w2.has(face[u])) n++; } if (tot > 0 && n >= 0.5 * tot) w2.add(r.id); } }
+        const adj2 = new Map(); for (const id of w2) adj2.set(id, new Set());
+        for (let t = 0; t < nT; t++) { const a = face[t]; if (!w2.has(a)) continue; for (let j = 0; j < 3; j++) { const u = M.nb[3 * t + j]; if (u < 0) continue; const b = face[u]; if (b !== a && w2.has(b) && cosDih(t, u) > Math.cos(30 * Math.PI / 180)) { adj2.get(a).add(b); adj2.get(b).add(a); } } }
+        growPatches(w2, adj2, 2 * tol); absorb(2 * tol);
+      }
+    }
+
     /* [2026-10-05 17:25] Versione precedente 4d (sfere da macchie freeform), sostituita da 4a-bis:
     // ---- 4d. SFERE: gruppi connessi di freeform che stanno su una sfera ----
     if (opts.spheres) {
@@ -1165,7 +1268,8 @@
       const hs = data.map(x => x.h), span = Math.max(...hs) - Math.min(...hs);
       // passo: massimizza la concentrazione della fase (h - P·θ/2π) mod P sulle creste (destra e sinistra)
       for (const P of PITCHES) {
-        if (span < 1.5 * P || depth < 0.3 * P || depth > 1.0 * P) continue;
+        // [2026-10-21 v1.11.0] prima: span < 1.5 * P (bastavano 1,5 giri: un'onda lenta di una superficie libera passava per filetto, Ø10 P5 su un guscio ondulato)
+        if (span < 2.5 * P || depth < 0.3 * P || depth > 1.0 * P) continue;
         for (const hand of [1, -1]) {
           let cs = 0, sn = 0;
           for (const x of crest) { const ph = 2 * Math.PI * (x.h - hand * P * x.th / (2 * Math.PI)) / P; cs += Math.cos(ph); sn += Math.sin(ph); }
@@ -2093,10 +2197,16 @@
           i += ch.edges.length;
         }
         // area proiettata (per scegliere il bordo esterno delle facce piane)
-        let ar = 0; if (r.type === 'plane') for (const [a, b] of L) ar += dot(cross(M.P(a), M.P(b)), r.normal);
-        return { loop: E(`EDGE_LOOP('',(${oe.join(',')}))`), ar };
+        // [2026-10-21 v1.11.0] prima: solo r.type === 'plane'; le B-spline aperte usano la stessa area proiettata lungo la loro normale
+        const useAr = r.type === 'plane' || (r.type === 'bspline' && r.normal && !r.closedU);
+        let ar = 0; if (useAr) for (const [a, b] of L) ar += dot(cross(M.P(a), M.P(b)), r.normal);
+        let per = 0; for (const [a, b] of L) per += len(sub(M.P(b), M.P(a)));   // [2026-10-21 v1.11.0] perimetro (per scegliere il bordo esterno delle facce non piane)
+        return { loop: E(`EDGE_LOOP('',(${oe.join(',')}))`), ar, per };
       });
-      let outer = -1; if (r.type === 'plane' && bounds.length) outer = bounds.reduce((bi, b, i) => (b.ar > bounds[bi].ar ? i : bi), 0);
+      // [2026-10-21 v1.11.0] prima: solo i piani avevano un FACE_OUTER_BOUND; le altre facce con più anelli (B-spline, cilindri… con fori) li avevano tutti
+      // come FACE_BOUND e OpenCASCADE poteva prendere come esterno quello sbagliato. Ora per le non piane l'esterno è l'anello più lungo.
+      let outer = -1; if ((r.type === 'plane' || (r.type === 'bspline' && r.normal && !r.closedU)) && bounds.length) outer = bounds.reduce((bi, b, i) => (b.ar > bounds[bi].ar ? i : bi), 0);
+      else if (bounds.length > 1) outer = bounds.reduce((bi, b, i) => (b.per > bounds[bi].per ? i : bi), 0);
       const fb = bounds.map((b, i) => E(`${i === outer ? 'FACE_OUTER_BOUND' : 'FACE_BOUND'}('',${b.loop},.T.)`));
       let surf, sense = '.T.', fname = '';
       if (fi.faceted) { const t = fi.tris[0], n = [M.N[3 * t], M.N[3 * t + 1], M.N[3 * t + 2]]; surf = E(`PLANE('',${place(M.P(M.T[3 * t]), n, perp(n))})`); if (r.type === 'thread') fname = 'THREAD ' + r.label; }
@@ -2263,10 +2373,11 @@
     return n + (tiny > 0.1 * nT ? tiny : 0);
   }
   function segmentAuto(M, opts) {
+    // [2026-10-21 v1.11.0] prima: gradini fissi ×1 ×2 ×4 ×8; ora il gradino dipende da quanto è grave: se restano > 3% di triangoli sciolti si salta ×4
+    // (su un file da 22 000 triangoli ogni analisi costa ~20 s: meno tentativi = meno attesa)
     const tries = [], cap = Math.max(opts.tol, M.diag * 0.004), limit = Math.max(2, 0.005 * M.nT);
-    let best = null, prev = null;
-    for (const k of [1, 1.5, 2.5, 4, 8]) {
-      const tol = Math.min(opts.tol * k, cap); if (prev && tol <= prev.tol * 1.0001) break;
+    let best = null, prev = null, tol = opts.tol, quasi = false;
+    for (let n = 0; n < 5; n++) {
       const seg = segment(M, Object.assign({}, opts, { tol })), loose = looseTris(seg, M.nT), regions = seg.regions.filter(r => r.type !== 'merged').length;
       tries.push({ tol, loose, regions });
       const eff = loose <= limit ? 0 : loose, cur = { seg, tol, loose, eff, regions };
@@ -2275,6 +2386,10 @@
       else if (prev && eff >= prev.eff && regions >= prev.regions) break;   // nessun miglioramento rispetto al gradino precedente: inutile salire
       prev = cur;
       if (loose === 0) break;                                              // nessun triangolo sciolto: finito
+      // quasi pulito (≤ 0,5% sciolti): al massimo un gradino ×2 in più, accettato solo se le regioni calano di oltre il 10% (vedi `best` sopra)
+      if (eff === 0) { if (quasi) break; quasi = true; }
+      const next = Math.min(tol * (loose > 0.03 * M.nT ? 3 : 2), cap);   // [2026-10-21 v1.11.0] ×3 (non ×4) se grave: ×4 superava troppo la tolleranza utile (noisy_plate 0,02 → 0,08) if (next <= tol * 1.0001) break;
+      tol = next;
     }
     return { seg: best.seg, tol: best.tol, tries };
   }

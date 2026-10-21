@@ -1,5 +1,5 @@
 // Mesh2STEP — tests/run_core.js
-// Versione: 1.10.0 — 2026-10-21 14:15
+// Versione: 1.11.0 — 2026-10-21 18:27
 // Esegue il core in Node su ogni file di tests/samples e scrive gli STEP in tests/out.
 // Uso: node tests/run_core.js [cartella_input] [cartella_output] [tol]
 const fs = require('fs'), path = require('path');

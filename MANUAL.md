@@ -1,5 +1,5 @@
 # MANUALE — Mesh2STEP
-Versione documento: 1.10.0 — 2026-10-21 14:15
+Versione documento: 1.11.0 — 2026-10-21 18:27
 <!-- [2026-10-06 13:45] versione precedente 1.0.0 (2026-10-05 17:10) nel repository git (commit 729f9ed). -->
 
 ## 1. Avvio
@@ -54,6 +54,10 @@ Il colore dipende **solo dal tipo** di superficie (dalla 1.3.1): facce vicine de
 - **Scarto max accettato**: default 5 × tolleranza.
 - Le facce unite devono essere contigue.
 - **Annulla ultima modifica**: fino a 20 passi. Una nuova analisi azzera la cronologia.
+
+### Superfici libere (dalla 1.11.0)
+- Le zone lisce a forma libera (condotti, scoop, carene) diventano **patch B-spline** (colore B-spline) invece di mosaici di sfere/cilindri o triangoli. Se una zona resta a triangoli aumenta la tolleranza o lascia attiva la tolleranza automatica.
+- Avviso: per queste parti lo STEP può non superare il controllo di validità di OpenCASCADE (alcune facce); aprilo in un CAD e, se serve, usa «Verifica STEP» come controllo leggero.
 
 ### Tolleranza automatica (dalla 1.10.0)
 - Casella **Tolleranza automatica** (sezione Riconoscimento, attiva): se con la tolleranza scelta restano troppi triangoli sfaccettati, l'analisi si ripete con tolleranza crescente (fino a ×8, max 0,4% della diagonale) e tiene il risultato migliore. Lo stato indica «Tolleranza automatica: a → b mm»; b è la tolleranza usata anche per lo STEP.

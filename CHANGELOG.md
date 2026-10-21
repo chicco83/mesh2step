@@ -1,5 +1,16 @@
 # CHANGELOG — Mesh2STEP
-Versione documento: 1.10.0 — 2026-10-21 14:15
+Versione documento: 1.11.0 — 2026-10-21 18:27
+
+## 19. [1.11.0] — 2026-10-21 18:27 — Superfici libere: patch B-spline al posto di mosaici di quadriche (file «80mm MI_XX GPU Fan Plenum»)
+Il file dell'utente (staffa/condotto da 22 394 triangoli: flangia con fori, pareti piane, testo in rilievo e una «scoop» curva con triangoli lunghi e sottili) con i valori predefiniti dava **4 529 facce** (tolleranza 0,017): la scoop diventava centinaia di sfere e cilindri di raggio enorme (R fino a 2 758 mm su regioni di pochi mm) e di freeform triangolo per triangolo.
+- **Stadio 4d-bis: patch B-spline** (`segment`). Regioni «deboli» = freeform, quadriche con R > 4× la loro estensione, piccoli piani incastrati, e catene di ≥ 4 quadriche confinanti con diedri < 30° e **raggi variabili** (max/min > 1,8: una catena di raccordi CAD ha raggi uguali e resta com'è). Si uniscono regioni intere in ordine di adiacenza e si controlla l'adattamento a campo di altezze (scarto ≤ tol) a 3, 6, 12, 24… regioni, con bisezione al primo fallimento. Seconda passata a 2·tol sulle sole freeform rimaste. Assorbimento dei frammenti (≤ 150 triangoli) entro 2·tol dalla patch.
+- **Filettature**: servono almeno 2,5 giri (prima 1,5): un'onda lenta di una superficie libera veniva scambiata per un filetto (Ø10 P5) e sfaccettata (179 facce).
+- **Tolleranza automatica** più veloce: salto ×3 se resta oltre il 3% di triangoli sciolti, ×2 altrimenti, al massimo un gradino dopo essere «quasi pulita», 5 analisi al massimo.
+- **STEP**: le facce non piane con più anelli (e le B-spline aperte) scelgono l'anello esterno (perimetro / area proiettata).
+- Risultati: file dell'utente con tolleranza automatica **4 529 → 590 facce** (tolleranza usata 0,051; 142 B-spline, 126 piani, 34 cilindri; ~45 s in Node). Nuovo campione `scoop.stl` (mezza tromba a guscio, 14 548 triangoli): 144 → 55 facce (38 B-spline). Tutti gli altri campioni invariati (conteggi di facce e volumi come prima).
+- **Limite noto (non risolto)**: lo STEP di queste parti organiche **non è valido per OpenCASCADE** (BRepCheck): sul file dell'utente 49 facce su 473 (47 B-spline), volume 57 241 contro 50 380 della mesh; prima della 1.11.0 lo stesso file era invalido in modo peggiore (volume 1,2×10^11). Su `scoop` 6 facce su 92, volume +1,5% (prima 4 321 contro 6 714). Cause scartate: tolleranza di incertezza, verso della superficie, punti a farfalla, patch con un solo anello. `scoop.step` è in `tests/known_invalid.txt` (non fa fallire `check_step.py`). Da indagare: pcurve/anelli delle facce con più anelli su superfici B-spline.
+- Test: `tests/test_autotol.js` (scoop: ≤ 80 facce, ≥ 5 B-spline); 28 STEP, 27 validi + `scoop` noto. Il file dell'utente non è nel repository.
+- Rollback: `git revert` del commit; senza lo stadio 4d-bis restano le soglie di 1.10.0.
 
 ## 18. [1.10.0] — 2026-10-21 14:15 — Meno triangoli, più superfici: tolleranza automatica e robustezza al rumore
 Richiesta: «vengono mantenuti troppi triangoli invece di creare superfici». Causa trovata: il riconoscimento era tarato su mesh CAD esatte; su mesh con rumore sui vertici (scansioni, float32, rimesh) o con tessellazione più grossolana della tolleranza (il campo parte da 0,01 mm) piani e cilindri si frantumavano in centinaia di regioni da 1–2 triangoli, ciascuna una faccia STEP.

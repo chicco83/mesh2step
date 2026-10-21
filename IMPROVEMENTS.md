@@ -1,5 +1,5 @@
 # MIGLIORIE — Mesh2STEP
-Versione documento: 1.10.0 — 2026-10-21 14:15
+Versione documento: 1.11.0 — 2026-10-21 18:27
 <!-- [2026-10-06 13:45] versione precedente 1.0.0 (2026-10-05 17:10): elenco proposte tutte "da fare";
      aggiornato con lo stato di realizzazione. -->
 
@@ -27,6 +27,7 @@ Stato: ✅ fatto · 🟡 parziale · ⏸️ valutato e rinviato.
 | 17 | CI GitHub Actions | ✅ | 1.3.0 | `ci.yml` verde dal 2026-10-06 (mancavano `networkx`/`lxml`/`numpy`); dalla 1.4.0 esegue anche `test_repair.js` e `test_pdf.js` |
 | 18 | IT/EN, tema chiaro, viste | ✅ | 1.2.0 | |
 | 19 | Modifica foro (Ø, M2–M16: gioco / maschiatura / etichetta filetto) | 🟡 | 1.8.0 | Diametro cambiato con Annulla; la «filettatura» è foro di maschiatura + etichetta, **non** elica reale |
+| 22 | Patch B-spline per superfici libere a guscio (stadio 4d-bis) | 🟡 | 1.11.0 | Facce -87% sul file dell'utente (4 529 → 590); lo STEP risultante non è valido in OpenCASCADE (≈10% facce): da indagare |
 | 21 | Tolleranza automatica e robustezza al rumore | ✅ | 1.10.0 | Meno triangoli sfaccettati su mesh rumorose/grossolane; vedi CHANGELOG 18 |
 | 20 | Verifica STEP nell'app | ✅ | 1.9.0 | Controllo leggero (struttura, riferimenti, anelli, spigoli accoppiati); la validità completa resta OpenCASCADE |
 

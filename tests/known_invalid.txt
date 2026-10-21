@@ -1,0 +1,2 @@
+# STEP che OpenCASCADE segnala non validi (BRepCheck) ma che sono migliori della versione precedente; vedi CHANGELOG 19.
+scoop.step

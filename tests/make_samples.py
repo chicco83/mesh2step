@@ -132,3 +132,10 @@ def save_noisy(m, name, sigma, seed):
 save_noisy(plate, 'noisy_plate.stl', 0.01, 1)
 _c = [Manifold.sphere(3, 24).translate([x, y, z]) for x in (3, 37) for y in (3, 27) for z in (3, 17)]
 save_noisy(Manifold.batch_hull(_c) - Manifold.cylinder(30, 4, 4, 48).translate([20, 15, -5]), 'noisy_fillet.stl', 0.03, 7)
+
+# [v1.11.0] scoop.stl: mezza "tromba" liscia (profilo ondulato, asse incurvato, schiacciata) a guscio sottile: superficie libera su 180 gradi
+# che non e' un campo di altezze unico. Con tolleranza stretta si spezzava in centinaia di sfere/cilindri; ora patch B-spline (stadio 4d-bis).
+_prof = [(0.0, 0.0)] + [(12 + 3.5 * math.sin(2 * math.pi * 1.5 * z / 40), z) for z in np.linspace(0, 40, 61)] + [(0.0, 40.0)]
+_v = Manifold.revolve(CrossSection([_prof]), 96).warp(lambda p: (p[0] * 1.3 + 0.05 * (p[2] - 20) ** 2, p[1], p[2]))
+_half = _v ^ Manifold.cube([100, 100, 100]).translate([2, -50, -10])
+save(_half - _half.scale([0.8, 0.8, 1.0]).translate([2.6, 0, 0]), 'scoop.stl')

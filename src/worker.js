@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — worker.js
- * Versione: 1.10.0 — 2026-10-21 14:15 (Europe/Rome)
+ * Versione: 1.11.0 — 2026-10-21 18:27 (Europe/Rome)
  * Versione precedente archiviata in archive/worker_v1.0.0_20261005-1710.js (2026-10-06: riscrittura
  * per editing, riparazione, export STL/OBJ, deviazione, corpi).
  *
