@@ -1,7 +1,7 @@
 <!doctype html>
 <!--
   Mesh2STEP — index.html
-  Versione: 1.9.0 — 2026-10-09 09:53 (Europe/Rome)
+  Versione: 1.10.0 — 2026-10-21 14:15 (Europe/Rome)
   Versione precedente archiviata: archive/index_v1.0.1_20261006-1310.html
   (2026-10-06: nuova UI con editing facce, corpi, report, export STL/OBJ, deviazione, viste, IT/EN,
    tema chiaro, PWA offline con three.js locale in vendor/).
@@ -144,6 +144,7 @@
       <label class="chk"><input id="o_thr" type="checkbox" checked> <span data-i18n="t_thread_p">Filettature</span></label>
       <label class="chk"><input id="o_nurbs" type="checkbox" checked> <span data-i18n="t_bspline_p">B-spline</span></label>
     </div>
+    <label class="chk"><input id="o_auto" type="checkbox" checked> <span data-i18n="auto_tol">Tolleranza automatica (alza se restano troppi triangoli)</span></label>   <!-- [v1.10.0] -->
     <label class="chk"><input id="o_snap" type="checkbox"> <span data-i18n="snap">Arrotonda a valori nominali (Ø, assi, angoli)</span></label>
     <button id="analyse" disabled data-i18n="analyse">Analizza mesh</button>
   </section>

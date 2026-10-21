@@ -38,6 +38,8 @@ jobs:
         run: node tests/test_hole.js
       - name: Verifica STEP
         run: node tests/test_verify.js
+      - name: Tolleranza automatica e mesh rumorose
+        run: node tests/test_autotol.js
       - name: Build single-file
         run: node build.mjs
       - uses: actions/upload-artifact@v4

@@ -1,5 +1,5 @@
 # Mesh2STEP — tests/make_samples.py
-# Versione: 1.7.0 — 2026-10-07 22:10
+# Versione: 1.10.0 — 2026-10-21 14:15
 # Genera mesh di prova (STL) con geometria nota tramite manifold3d (booleane robuste).
 import sys, os
 import numpy as np
@@ -121,3 +121,14 @@ with zipfile.ZipFile(os.path.join(out, 'named_parts.3mf'), 'w', zipfile.ZIP_DEFL
     zf.writestr('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>')
     zf.writestr('3D/3dmodel.model', xml)
 print('named_parts.3mf')
+
+# [v1.10.0] Mesh rumorose (come scansioni / float32 / rimesh): vertici spostati con rumore gaussiano (seme fisso, mesh già saldata).
+#   noisy_plate.stl  = piastra con foro Ø10 + rumore sigma 0,01 mm (tolleranza utile ~0,03)
+#   noisy_fillet.stl = scatola 40x30x20 con spigoli raccordati r=3 e foro Ø8 + rumore sigma 0,03 mm (tolleranza utile ~0,1)
+def save_noisy(m, name, sigma, seed):
+    mesh = m.to_mesh(); v = mesh.vert_properties[:, :3].copy()
+    v += np.random.default_rng(seed).normal(0, sigma, v.shape)
+    trimesh.Trimesh(v, mesh.tri_verts, process=False).export(os.path.join(out, name)); print(name, len(mesh.tri_verts), 'tri, rumore', sigma)
+save_noisy(plate, 'noisy_plate.stl', 0.01, 1)
+_c = [Manifold.sphere(3, 24).translate([x, y, z]) for x in (3, 37) for y in (3, 27) for z in (3, 17)]
+save_noisy(Manifold.batch_hull(_c) - Manifold.cylinder(30, 4, 4, 48).translate([20, 15, -5]), 'noisy_fillet.stl', 0.03, 7)

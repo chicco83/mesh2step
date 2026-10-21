@@ -1,5 +1,5 @@
 # CONTEXT — Mesh2STEP
-Versione documento: 1.9.0 — 2026-10-09 09:53
+Versione documento: 1.10.0 — 2026-10-21 14:15
 
 ## Scopo
 Web app che converte mesh triangolari (STL, OBJ, 3MF) in file STEP con **geometria CAD reale**:
@@ -85,6 +85,7 @@ index.html ── src/app.js (UI, viewer three.js, i18n, editing, export, API in
 | 2026-10-05 | Cowork cloud | Analisi del sito di riferimento, v1.0.0 (piani, cilindri, sfere, STEP), commit `729f9ed` caricato dall'utente |
 | 2026-10-06 mattina | Cowork cloud | v1.0.1 README completo; v1.1.0–1.3.0 tutte le migliorie (commit `e1e10bb`, `61c8f81`), consegnate come git bundle perché la sessione non poteva fare push; pubblicate dall'utente; Pages verificato online |
 | 2026-10-06 14:10 | Cowork cloud | Documentazione per riprendere il lavoro da Claude Code |
+| 2026-10-21 | Claude Code (cloud) | v1.10.0: tolleranza automatica e robustezza al rumore (troppi triangoli mantenuti) |
 | 2026-10-09 | Claude Code (cloud) | v1.9.0: **Verifica STEP** nell'app (`verifyStep`, comando Worker `verify`, `tests/test_verify.js`) |
 | 2026-10-08 | Claude Code (cloud) | v1.8.0: confronto con il sito di riferimento (nuove funzioni: modifica fori, verifica STEP); implementata la **modifica foro** (`resizeHole`, comando Worker `hole`, Annulla con mesh); corretto bug di mutazione in `editRegions` |
 | 2026-10-07 | Claude Code (locale) | v1.3.1–1.3.2: colori per tipo, selezione, deviazione B-spline, fix CI, prova UI nel browser integrato. v1.4.0: filettature→cilindro, sfere spurie, sfera/toro completi, non-manifold, report PDF. v1.4.1: primo avvio reale dell'exe su Windows 11 (bug risorse con backslash corretto) |

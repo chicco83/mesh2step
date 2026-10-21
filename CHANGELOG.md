@@ -1,5 +1,17 @@
 # CHANGELOG — Mesh2STEP
-Versione documento: 1.9.0 — 2026-10-09 09:53
+Versione documento: 1.10.0 — 2026-10-21 14:15
+
+## 18. [1.10.0] — 2026-10-21 14:15 — Meno triangoli, più superfici: tolleranza automatica e robustezza al rumore
+Richiesta: «vengono mantenuti troppi triangoli invece di creare superfici». Causa trovata: il riconoscimento era tarato su mesh CAD esatte; su mesh con rumore sui vertici (scansioni, float32, rimesh) o con tessellazione più grossolana della tolleranza (il campo parte da 0,01 mm) piani e cilindri si frantumavano in centinaia di regioni da 1–2 triangoli, ciascuna una faccia STEP.
+- **Tolleranza automatica** (casella, attiva di default): `segmentAuto` analizza con la tolleranza scelta e, se restano triangoli sfaccettati (freeform, o piani da ≤ 2 triangoli se sono > 10% della mesh), la alza a gradini ×1,5 ×2,5 ×4 ×8 (mai oltre lo 0,4% della diagonale) tenendo il tentativo migliore; mesh pulite = una sola passata. La tolleranza usata è mostrata nello stato e diventa quella dell'export STEP. `dome.stl` a 0,01 mm: 902 regioni → 7 facce; `vase_bent`: 4393 → 3.
+- **Soglia d'angolo da rumore**: la normale di un triangolo piccolo con vertici spostati di ±tol può inclinarsi di atan(2·tol/altezza); `tiltSin/tiltCos` per triangolo (max(angolo, rumore), tetto 15°) nella crescita di piani e cilindri.
+- **Piani**: il piano di crescita si rifitta a 4, 8, 16… triangoli (prima restava quello del solo triangolo seme: con rumore ogni triangolo diventava una faccia); soglia 2·tol sotto 16 triangoli.
+- **Cilindri**: asse iniziale da una toppa di 12 triangoli (autovettore delle normali) invece di cross(n1,n2) di soli due; soglia 3·tol sotto 24 triangoli.
+- **Tori**: un cilindro (adattamento robusto che scarta i triangoli lontani) o un piano che spiega la regione vince sul toro: prima un foro rumoroso diventava un toro R15/r11.
+- **Fusione e assorbimento**: oltre ai parametri uguali, due regioni adiacenti si fondono se la primitiva rifittata sull'unione resta entro tol (piano, cilindro, sfera); i frammenti di ≤ 4 triangoli (piano/freeform) a ≤ 1,5·tol da una regione analitica vicina vengono assorbiti.
+- Test: nuovi campioni `noisy_plate.stl` (σ 0,01) e `noisy_fillet.stl` (σ 0,03) in `make_samples.py`; `tests/test_autotol.js` (senza auto 27 e 555 facce; con auto 7 e 27; mesh pulite invariate) in CI; `run_core.js` usa `autoTol`; 27 STEP `valid=True` (OpenCASCADE); tutti gli altri test invariati; `test_selfint.js` ignora `noisy_*` (il rumore crea piccole piegature). Provato nel browser (Playwright) con e senza la casella.
+- Limiti: con rumore forte la tolleranza finale sale (σ 0,03 → 0,08 mm) e le caratteristiche più piccole del rumore si perdono; l'auto fa fino a 5 analisi (vase_bent ~22 s dal 0,01 iniziale); il rumore non elimina le piegature della mesh.
+- Rollback: togliere la casella (`autoTol` falso) ripristina il comportamento di prima per la tolleranza; le altre modifiche (soglie, fusione) sono nel commit e si annullano con `git revert`.
 
 ## 17. [1.9.0] — 2026-10-09 09:53 — Verifica STEP nell'app
 Ispirata alla «Verifica STEP» del sito di riferimento (solo l'idea; implementazione propria).

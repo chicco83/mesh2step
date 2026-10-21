@@ -1,5 +1,5 @@
 // Mesh2STEP — tests/run_core.js
-// Versione: 1.9.0 — 2026-10-09 09:53
+// Versione: 1.10.0 — 2026-10-21 14:15
 // Esegue il core in Node su ogni file di tests/samples e scrive gli STEP in tests/out.
 // Uso: node tests/run_core.js [cartella_input] [cartella_output] [tol]
 const fs = require('fs'), path = require('path');
@@ -16,9 +16,9 @@ fs.mkdirSync(outDir, { recursive: true });
     const t0 = Date.now();
     const soup = await M2S.parseFile(f, ab);
     const snap = !!process.env.SNAP;   // [v1.1.0] SNAP=1 per lo snap ai valori nominali
-    const { M, seg } = M2S.analyse(soup, { tol, angle: 1, cylinders: true, spheres: true, cones: true, tori: true, threads: true, nurbs: true, snap });
+    const { M, seg, tol: tolUsed } = M2S.analyse(soup, { tol, angle: 1, cylinders: true, spheres: true, cones: true, tori: true, threads: true, nurbs: true, snap, autoTol: true });   // [v1.10.0] autoTol: le mesh rumorose (noisy_*) ottengono una tolleranza adeguata
     const feat = M2S.features(M, seg);
-    const st = M2S.exportSTEP(M, seg, { name: path.parse(f).name, tol });
+    const st = M2S.exportSTEP(M, seg, { name: path.parse(f).name, tol: tolUsed });   // [2026-10-21 v1.10.0] prima: tol
     fs.writeFileSync(path.join(outDir, path.parse(f).name + '.step'), st.text);
     // [v1.4.0] variante con filettature sostituite dal cilindro nominale -> <nome>_threadcyl.step
     if (seg.regions.some(r => r.type === 'thread')) fs.writeFileSync(path.join(outDir, path.parse(f).name + '_threadcyl.step'), M2S.exportSTEP(M, seg, { name: path.parse(f).name, tol, threadCyl: true }).text);

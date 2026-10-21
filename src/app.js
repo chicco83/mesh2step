@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — app.js
- * Versione: 1.9.0 — 2026-10-09 09:53 (Europe/Rome)
+ * Versione: 1.10.0 — 2026-10-21 14:15 (Europe/Rome)
  * Versione precedente archiviata: archive/app_v1.0.1_20261006-1310.js
  * (2026-10-06: riscritta per editing facce, corpi, report CSV, export STL/OBJ, heatmap deviazione,
  *  viste, IT/EN, tema chiaro, condivisione, PWA e API di integrazione).
@@ -16,7 +16,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 // [2026-10-07 v1.7.0] const VERSION = '1.6.0';
 // [2026-10-08 v1.8.0] const VERSION = '1.7.0';
 // [2026-10-09 09:53 v1.9.0] const VERSION = '1.8.0';
-const VERSION = '1.9.0';
+// [2026-10-21 14:15 v1.10.0] const VERSION = '1.9.0';
+const VERSION = '1.10.0';
 const $ = id => document.getElementById(id);
 const store = { get: k => { try { return localStorage.getItem('m2s.' + k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem('m2s.' + k, v); } catch { /* storage non disponibile */ } } };
 
@@ -53,6 +54,7 @@ const DICT = {
     'step.noHeader': 'manca l\'intestazione ISO-10303-21', 'step.noFooter': 'manca la chiusura END-ISO-10303-21', 'step.noEndsec': 'manca ENDSEC', 'step.noData': 'manca la sezione DATA', 'step.badNumber': 'numeri non validi (NaN/Infinity)',
     'step.dupId': 'id duplicato', 'step.dangling': 'riferimento a entità inesistente', 'step.loopRef': 'anello con spigoli non validi', 'step.loopOpen': 'anello non chiuso', 'step.faceNoBound': 'faccia senza bordo',
     'step.shellFace': 'guscio con faccia inesistente', 'step.shellNotClosed': 'guscio chiuso con spigoli non accoppiati', 'step.shellEdge': 'spigolo usato più di due volte', 'step.noFaces': 'nessuna faccia', 'step.openBoundary': 'bordo aperto (spigoli usati una volta)',
+    auto_tol: 'Tolleranza automatica (alza se restano troppi triangoli)', auto_used: ' Tolleranza automatica: {b} → {a} mm.',
     csv_head: 'tipo;diametro_mm;profondita_mm;passante;asse_x;asse_y;asse_z;pos_x;pos_y;pos_z;note',
   },
   en: {
@@ -86,6 +88,7 @@ const DICT = {
     'step.noHeader': 'missing ISO-10303-21 header', 'step.noFooter': 'missing END-ISO-10303-21 footer', 'step.noEndsec': 'missing ENDSEC', 'step.noData': 'missing DATA section', 'step.badNumber': 'invalid numbers (NaN/Infinity)',
     'step.dupId': 'duplicate id', 'step.dangling': 'reference to a missing entity', 'step.loopRef': 'loop with invalid edges', 'step.loopOpen': 'loop not closed', 'step.faceNoBound': 'face without bound',
     'step.shellFace': 'shell with a missing face', 'step.shellNotClosed': 'closed shell with unpaired edges', 'step.shellEdge': 'edge used more than twice', 'step.noFaces': 'no faces', 'step.openBoundary': 'open boundary (edges used once)',
+    auto_tol: 'Automatic tolerance (raise it when too many triangles remain)', auto_used: ' Automatic tolerance: {b} → {a} mm.',
     csv_head: 'type,diameter_mm,depth_mm,through,axis_x,axis_y,axis_z,pos_x,pos_y,pos_z,note',
   },
 };
@@ -315,7 +318,7 @@ $('repairself').onclick = async () => {   // [v1.7.0] unione booleana (manifold-
 
 // ============================ Analisi ============================
 function opts() {
-  return { tol: +$('tol').value, angle: +$('ang').value, cylinders: $('o_cyl').checked, cones: $('o_cone').checked, spheres: $('o_sph').checked, tori: $('o_tor').checked, threads: $('o_thr').checked, nurbs: $('o_nurbs').checked, snap: $('o_snap').checked };
+  return { tol: +$('tol').value, angle: +$('ang').value, cylinders: $('o_cyl').checked, cones: $('o_cone').checked, spheres: $('o_sph').checked, tori: $('o_tor').checked, threads: $('o_thr').checked, nurbs: $('o_nurbs').checked, snap: $('o_snap').checked, autoTol: $('o_auto').checked };   // [v1.10.0] autoTol
 }
 function onResult(r) {
   res = r; sel.clear();   // [2026-10-06 v1.3.1] prima: la faccia risultante da un'unione restava selezionata (sel.add(r.selected))
@@ -327,9 +330,10 @@ async function analyse() {
   try {
     busy(true); $('analyse').disabled = true; status(t('analysing'));
     const o = opts(); const r = await call({ cmd: 'analyse', opts: o });
-    analysedTol = o.tol; $('maxerr').value = +(o.tol * 5).toFixed(3); onResult(r); $('undo').disabled = true;
+    // [2026-10-21 v1.10.0] prima: analysedTol = o.tol; $('maxerr').value = +(o.tol * 5).toFixed(3);  (con autoTol la tolleranza usata può essere più alta)
+    const tolUsed = r.tolUsed || o.tol; analysedTol = tolUsed; $('maxerr').value = +(tolUsed * 5).toFixed(3); onResult(r); $('undo').disabled = true;
     const freePct = info.nT ? r.stats.freeformTris / info.nT : 0;
-    status(t('done', { s: fmt(r.ms / 1000, 2) }) + (freePct > 0.5 ? t('many_free') : ''), freePct > 0.5 ? 'warn' : '');
+    status(t('done', { s: fmt(r.ms / 1000, 2) }) + (tolUsed > o.tol * 1.0001 ? t('auto_used', { b: fmt(o.tol, 3), a: fmt(tolUsed, 3) }) : '') + (freePct > 0.5 ? t('many_free') : ''), freePct > 0.5 ? 'warn' : '');   // [v1.10.0] avviso tolleranza automatica
   } catch (e) { status(t('err') + errText(e), 'err'); }
   finally { busy(false); $('analyse').disabled = false; }
 }

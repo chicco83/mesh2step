@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — core.js
- * Versione: 1.9.0 — 2026-10-09 09:53 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
+ * Versione: 1.10.0 — 2026-10-21 14:15 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
  * ---------------------------------------------------------------------------
  * Motore indipendente dalla UI (gira nel Web Worker del browser e in Node per i test).
  *   1. Parsing  : STL (binario/ASCII), OBJ, 3MF (zip letto a mano + DecompressionStream)
@@ -18,7 +18,8 @@
   // [2026-10-07 v1.7.0] const VERSION = '1.6.0';
   // [2026-10-08 v1.8.0] const VERSION = '1.7.0';
   // [2026-10-09 09:53 v1.9.0] const VERSION = '1.8.0';
-  const VERSION = '1.9.0';
+  // [2026-10-21 14:15 v1.10.0] const VERSION = '1.9.0';
+  const VERSION = '1.10.0';
 
   // ===================== Helper vettoriali (array [x,y,z]) =====================
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -399,6 +400,17 @@
     const Nv = t => [M.N[3 * t], M.N[3 * t + 1], M.N[3 * t + 2]];
     const cosDih = (t, u) => dot(Nv(t), Nv(u));       // coseno angolo diedro tra triangoli
     const maxStep = Math.cos(40 * Math.PI / 180);     // salto massimo tra facette di una superficie curva
+    // [2026-10-21 v1.10.0] Inclinazione ammessa per rumore: un triangolo piccolo i cui vertici sono spostati di ±tol può avere la normale
+    // inclinata fino a ~atan(2·tol/altezza minima). Il test "normale entro opts.angle" falliva su mesh rumorose (scansioni, float32, rimesh)
+    // e frantumava piani e cilindri in centinaia di regioni: la soglia vale max(opts.angle, inclinazione da rumore), con tetto 15°.
+    // Il controllo geometrico vero resta la distanza dei vertici dalla superficie (vertsOK), quindi su mesh esatte nulla cambia.
+    const tiltSin = new Float64Array(nT), tiltCos = new Float64Array(nT), capT = 15 * Math.PI / 180;
+    for (let t = 0; t < nT; t++) {
+      const a = M.P(M.T[3 * t]), b = M.P(M.T[3 * t + 1]), c = M.P(M.T[3 * t + 2]);
+      const lmax = Math.max(len(sub(b, a)), len(sub(c, b)), len(sub(a, c))), alt = lmax > 0 ? 2 * M.A[t] / lmax : 0;
+      const tl = Math.max(opts.angle * Math.PI / 180, alt > 0 ? Math.min(Math.atan(2 * tol / alt), capT) : capT);
+      tiltSin[t] = Math.sin(tl); tiltCos[t] = Math.cos(tl);
+    }
     const mark = new Int32Array(nT).fill(-1); let stamp = 0;   // marcatura temporanea senza riallocare
     const vertsOK = (t, f) => { for (let k = 0; k < 3; k++) if (f(M.P(M.T[3 * t + k])) > tol) return false; return true; };
     const vertsOKt = (t, f, tl) => { for (let k = 0; k < 3; k++) if (f(M.P(M.T[3 * t + k])) > tl) return false; return true; };
@@ -577,6 +589,21 @@
         reg = reg.filter(t => vertsOKt(t, p => Math.abs(torusDist(T, p)), tol));
         if (reg.length < 24 || !okT(T)) continue;
         for (const t of reg) torTried[t] = 1;
+        // [2026-10-21 v1.10.0] un cilindro o un piano che spiega tutta la regione (entro 2·tol) vince sul toro: con mesh rumorose
+        // la "doppia curvatura" è solo rumore e un foro diventava un toro enorme (R 15, r 11) invece di un cilindro.
+        {
+          const vs = verticesOf(M, reg), axC = norm(axisFromNormals(M, reg)[0].vec);
+          const perpT = reg.filter(t => Math.abs(dot(Nv(t), axC)) <= 3 * tiltSin[t]);   // il resto (pochi triangoli piani inglobati) non conta
+          let cy = perpT.length >= 0.9 * reg.length ? fitCylinder(M, perpT, axC) : null, inl = perpT;
+          // adattamento robusto: a ogni giro si scarta il 3% di triangoli più lontani (pareti/piani inglobati) e si rifitta
+          for (let it = 0; it < 6 && cy && cy.maxErr > 2 * tol; it++) {
+            const c0 = cy, er = t => Math.max(...[0, 1, 2].map(k => { const d = sub(M.P(M.T[3 * t + k]), c0.origin); return Math.abs(len(sub(d, mul(axC, dot(d, axC)))) - c0.radius); }));
+            const sorted = inl.map(t => [er(t), t]).sort((x, y) => x[0] - y[0]);
+            inl = sorted.slice(0, Math.max(1, Math.floor(sorted.length * 0.97))).map(x => x[1]);
+            cy = inl.length >= 0.9 * reg.length ? fitCylinder(M, inl, axC) : null;
+          }
+          if ((cy && cy.maxErr <= 2 * tol && cy.radius < M.diag * 20 && inl.length >= 0.9 * reg.length) || fitPlane(vs).maxErr <= 2 * tol) continue;
+        }
         let out = 0;
         for (const t of reg) { const p = [M.C[3 * t], M.C[3 * t + 1], M.C[3 * t + 2]], d = sub(p, T.center), h = dot(d, T.axis), q = add(T.center, mul(norm(sub(d, mul(T.axis, h))), T.R)); out += M.A[t] * dot(Nv(t), sub(p, q)); }
         const id = regions.length;
@@ -655,23 +682,44 @@
         const cd = cosDih(s, s2); if (cd > Math.cos(0.3 * Math.PI / 180) || cd < maxStep) continue;
         let axis = norm(cross(Nv(s), Nv(s2))); if (len(axis) === 0) continue;
         stamp++; const reg = [s, s2]; mark[s] = mark[s2] = stamp;
+        // [2026-10-21 v1.10.0] asse iniziale robusto: cross(n1,n2) di soli 2 triangoli è troppo sensibile al rumore (errore di ~10° con
+        // vertici spostati di 0,01 mm su facette da 0,5 mm) e la crescita si fermava subito. Si prende una piccola toppa (fino a 12
+        // triangoli lisci intorno al seme) e l'asse è l'autovettore minimo delle sue normali; se la toppa è piccola resta l'asse a 2 triangoli.
+        {
+          const patch = [s, s2];
+          for (let qi = 0; qi < patch.length && patch.length < 12; qi++) for (let j = 0; j < 3; j++) {
+            const u = M.nb[3 * patch[qi] + j];
+            if (u < 0 || face[u] >= 0 || mark[u] === stamp || cosDih(patch[qi], u) < maxStep) continue;
+            mark[u] = stamp; patch.push(u); if (patch.length >= 12) break;
+          }
+          if (patch.length >= 6) {
+            const a2 = norm(axisFromNormals(M, patch)[0].vec);
+            if (len(a2) > 0 && fitCylinder(M, patch, a2)) { axis = a2; reg.length = 0; reg.push(...patch); }
+            else for (const t of patch) if (t !== s && t !== s2) mark[t] = 0;
+          } else for (const t of patch) if (t !== s && t !== s2) mark[t] = 0;
+        }
         // cerchio iniziale dai 3 punti proiettati della coppia seme (esatto su mesh da CAD):
         // evita che la crescita "scivoli" su piani tangenti prima del primo refit
         let cyl = fitCylinder(M, reg, axis); if (cyl && cyl.radius > M.diag * 20) cyl = null;
-        let nextFit = 6; const queue = [s, s2];
+        let nextFit = 6; const queue = reg.slice();   // [2026-10-21 v1.10.0] prima: const queue = [s, s2];
         for (let qi = 0; qi < queue.length; qi++) {
           const t = queue[qi];
           for (let j = 0; j < 3; j++) {
             const u = M.nb[3 * t + j];
             if (u < 0 || face[u] >= 0 || mark[u] === stamp) continue;
             if (cosDih(t, u) < maxStep) continue;
-            if (Math.abs(dot(Nv(u), axis)) > sinA) continue;            // normale ⟂ asse
-            if (cyl && !vertsOK(u, p => { const d = sub(p, cyl.origin); const h = dot(d, axis); return Math.abs(len(sub(d, mul(axis, h))) - cyl.radius); })) continue;
+            // [2026-10-21 v1.10.0] prima: if (Math.abs(dot(Nv(u), axis)) > sinA) continue;
+            if (Math.abs(dot(Nv(u), axis)) > tiltSin[u]) continue;            // normale ⟂ asse (con tolleranza da rumore)
+            // [2026-10-21 v1.10.0] prima: if (cyl && !vertsOK(u, ...)) continue;  e  if (c && c.maxErr <= tol) { ... }
+            // Con mesh rumorose il cilindro iniziale (2 soli triangoli) ha asse e raggio sbagliati: finché la regione ha meno di 24
+            // triangoli la soglia è 3·tol, poi torna tol (il refit a 6, 9, 14… triangoli stabilizza l'asse).
+            const tolG = reg.length < 24 ? 3 * tol : tol;
+            if (cyl && !vertsOKt(u, p => { const d = sub(p, cyl.origin); const h = dot(d, axis); return Math.abs(len(sub(d, mul(axis, h))) - cyl.radius); }, tolG)) continue;
             mark[u] = stamp; reg.push(u); queue.push(u);
             if (reg.length >= nextFit) {                                  // riallinea asse e raggio
               const ax = axisFromNormals(M, reg)[0].vec;
               const c = fitCylinder(M, reg, norm(ax));
-              if (c && c.maxErr <= tol) { cyl = c; axis = c.axis; }
+              if (c && c.maxErr <= tolG) { cyl = c; axis = c.axis; }
               nextFit = Math.ceil(nextFit * 1.5);
             }
           }
@@ -681,7 +729,8 @@
         const ax = norm(axisFromNormals(M, reg)[0].vec), c = fitCylinder(M, reg, ax);
         if (!c || c.maxErr > tol || c.radius > M.diag * 20) continue;
         // [v1.1.0 2026-10-06] tutte le normali ⟂ all'asse finale (esclude strisce di coni/tori)
-        if (reg.some(t => Math.abs(dot(Nv(t), ax)) > 2 * sinA)) continue;
+        // [2026-10-21 v1.10.0] prima: if (reg.some(t => Math.abs(dot(Nv(t), ax)) > 2 * sinA)) continue;
+        if (reg.some(t => Math.abs(dot(Nv(t), ax)) > 2 * tiltSin[t])) continue;
         if (fitPlane(verticesOf(M, reg)).maxErr <= tol) continue;     // è in realtà un piano
         // almeno 3 orientazioni di facetta distinte attorno all'asse
         const u0 = perp(ax), v0 = cross(ax, u0);
@@ -737,7 +786,10 @@
     const order = [...Array(nT).keys()].sort((a, b) => M.A[b] - M.A[a]);
     for (const s of order) {
       if (face[s] >= 0) continue;
-      const n = Nv(s), d0 = dot(n, [M.C[3 * s], M.C[3 * s + 1], M.C[3 * s + 2]]);
+      // [2026-10-21 v1.10.0] prima: const n = ..., d0 = ... fissi dal solo triangolo seme (un piano per 3 vertici rumorosi, esteso lontano,
+      // si scosta oltre tol e la crescita si fermava: ogni triangolo diventava una faccia). Ora il piano si rifitta a 4, 8, 16… triangoli
+      // (fitPlane sui vertici della regione) e finché la regione è piccola la soglia è 2·tol.
+      let n = Nv(s), d0 = dot(n, [M.C[3 * s], M.C[3 * s + 1], M.C[3 * s + 2]]), nextFit = 4;
       const id = regions.length, reg = [s]; face[s] = id;
       const st = [s];
       while (st.length) {
@@ -745,9 +797,15 @@
         for (let j = 0; j < 3; j++) {
           const u = M.nb[3 * t + j];
           if (u < 0 || face[u] >= 0) continue;
-          if (dot(Nv(u), n) < cosA) continue;
-          if (!vertsOK(u, p => Math.abs(dot(p, n) - d0))) continue;
+          // [2026-10-21 v1.10.0] prima: if (dot(Nv(u), n) < cosA) continue;
+          if (dot(Nv(u), n) < tiltCos[u]) continue;
+          if (!vertsOKt(u, p => Math.abs(dot(p, n) - d0), reg.length < 16 ? 2 * tol : tol)) continue;
           face[u] = id; reg.push(u); st.push(u);
+          if (reg.length >= nextFit) {
+            const pl = fitPlane(verticesOf(M, reg));
+            if (pl && pl.maxErr <= 2 * tol) { const sg = dot(pl.normal, n) >= 0 ? 1 : -1; n = mul(pl.normal, sg); d0 = dot(n, pl.origin); }
+            nextFit *= 2;
+          }
         }
       }
       regions.push({ id, type: 'plane', tris: reg, normal: n, origin: [M.C[3 * s], M.C[3 * s + 1], M.C[3 * s + 2]] });
@@ -871,19 +929,62 @@
         if (a.type === 'torus') return Math.abs(dot(a.axis, b.axis)) > cosA && len(sub(a.center, b.center)) <= tol && Math.abs(a.R - b.R) <= tol && Math.abs(a.r - b.r) <= tol && a.outward === b.outward;
         return false;
       };
+      // [2026-10-21 v1.10.0] FUSIONE GEOMETRICA di riserva: se i parametri delle due regioni differiscono per il rumore (assi/piani leggermente
+      // diversi) ma la primitiva rifittata sull'unione resta entro `tol`, le regioni sono la stessa superficie. Solo piano, cilindro, sfera.
+      // Su mesh esatte `same` risponde già prima e questo ramo non cambia nulla.
+      const unionFit = (A, B) => {
+        if (A.type !== B.type) return null;
+        const tris = A.tris.concat(B.tris);
+        if (A.type === 'plane') { const pl = fitPlane(verticesOf(M, tris)); return pl.maxErr <= tol && dot(pl.normal, A.normal) * Math.sign(dot(A.normal, B.normal)) > 0 ? { normal: dot(pl.normal, A.normal) >= 0 ? pl.normal : mul(pl.normal, -1), origin: pl.origin } : null; }
+        if (A.type === 'sphere') { if (A.outward !== B.outward) return null; const sp = fitSphere(verticesOf(M, tris)); return sp && sp.maxErr <= tol ? { center: sp.center, radius: sp.radius, err: sp.maxErr } : null; }
+        if (A.type === 'cylinder') {
+          if (A.outward !== B.outward || Math.abs(A.radius - B.radius) > 3 * tol || Math.abs(dot(A.axis, B.axis)) < Math.cos(10 * Math.PI / 180)) return null;
+          const ax = norm(axisFromNormals(M, tris)[0].vec), c = fitCylinder(M, tris, ax);
+          return c && c.maxErr <= tol && Math.abs(dot(ax, A.axis)) > 0.99 ? { axis: c.axis, origin: c.origin, radius: c.radius, height: c.height, err: c.maxErr } : null;
+        }
+        return null;
+      };
+      const fuse = () => {
       let changed = true;
       while (changed) {
         changed = false;
         for (let t = 0; t < nT && !changed; t++) for (let j = 0; j < 3; j++) {
           const u = M.nb[3 * t + j]; if (u < 0) continue;
           const A = regions[face[t]], B = regions[face[u]];
-          if (A === B || !same(A, B)) continue;
+          if (A === B) continue;
+          if (!same(A, B)) {
+            const uf = A.type === B.type && ['plane', 'sphere', 'cylinder'].includes(A.type) ? unionFit(A, B) : null; if (!uf) continue;
+            Object.assign(A, uf);
+          }
           for (const x of B.tris) face[x] = A.id;
           A.tris = A.tris.concat(B.tris); B.type = 'merged'; B.tris = [];
           if (A.type === 'cylinder') { const c = fitCylinder(M, A.tris, A.axis); if (c) { A.origin = c.origin; A.height = c.height; } }
           if (A.type === 'cone') { const c = fitCone(M, A.tris); if (c) { A.hmin = c.hmin; A.hmax = c.hmax; } }
           changed = true; break;
         }
+      }
+      };
+      fuse();
+      // [2026-10-21 v1.10.0] ASSORBIMENTO dei frammenti: regioni piccole (≤ 4 triangoli, piano/freeform) con tutti i vertici entro 1,5·tol
+      // dalla superficie di una regione vicina più grande (piano, cilindro, sfera, cono, toro) sono solo rumore di quella superficie.
+      // Prima restavano come facce separate da 1–2 triangoli (una faccia STEP ciascuna).
+      {
+        const analytic = r => ['plane', 'cylinder', 'sphere', 'cone', 'torus'].includes(r.type);
+        const tiny = regions.filter(r => (r.type === 'plane' || r.type === 'freeform') && r.tris.length > 0 && r.tris.length <= 4).sort((x, y) => x.tris.length - y.tris.length);
+        for (const r of tiny) {
+          if (r.type === 'merged' || !r.tris.length) continue;
+          const cand = new Map();
+          for (const t of r.tris) for (let j = 0; j < 3; j++) { const u = M.nb[3 * t + j]; if (u < 0 || face[u] === r.id) continue; const q = regions[face[u]]; if (q.tris.length > r.tris.length && analytic(q) && q.tris.length > 4) cand.set(q.id, q); }
+          let best = null, bd = Infinity;
+          for (const q of cand.values()) {
+            let d = 0; for (const t of r.tris) for (let k = 0; k < 3; k++) d = Math.max(d, surfDist(q, M.P(M.T[3 * t + k])));
+            if (d <= 1.5 * tol && d < bd) { bd = d; best = q; }
+          }
+          if (!best) continue;
+          for (const x of r.tris) face[x] = best.id;
+          best.tris = best.tris.concat(r.tris); r.type = 'merged'; r.tris = [];
+        }
+        fuse();
       }
     }
 
@@ -2153,13 +2254,39 @@
   }
 
   // ======================== Pipeline completa ========================
+  // ---- [v1.10.0] Tolleranza automatica ----
+  // Se con la tolleranza richiesta restano troppi triangoli "sciolti" (freeform + frammenti di ≤ 4 triangoli), la si alza per gradini
+  // (×1,5 ×2,5 ×4 ×8, mai oltre 0,4% della diagonale) e si tiene il tentativo con meno triangoli sciolti: sulle mesh rumorose (scansioni,
+  // float32, rimesh) la tolleranza giusta è quella del rumore, non quella di una mesh CAD esatta. Se il primo tentativo è già pulito, una sola passata.
+  function looseTris(seg, nT) {   // triangoli rimasti sfaccettati (una faccia STEP ciascuno); i piani da ≤ 2 triangoli contano solo se sono tanti (> 10% della mesh)
+    let n = 0, tiny = 0; for (const r of seg.regions) { if (r.type === 'freeform') n += r.tris.length; else if (r.type === 'plane' && r.tris.length <= 2) tiny += r.tris.length; }
+    return n + (tiny > 0.1 * nT ? tiny : 0);
+  }
+  function segmentAuto(M, opts) {
+    const tries = [], cap = Math.max(opts.tol, M.diag * 0.004), limit = Math.max(2, 0.005 * M.nT);
+    let best = null, prev = null;
+    for (const k of [1, 1.5, 2.5, 4, 8]) {
+      const tol = Math.min(opts.tol * k, cap); if (prev && tol <= prev.tol * 1.0001) break;
+      const seg = segment(M, Object.assign({}, opts, { tol })), loose = looseTris(seg, M.nT), regions = seg.regions.filter(r => r.type !== 'merged').length;
+      tries.push({ tol, loose, regions });
+      const eff = loose <= limit ? 0 : loose, cur = { seg, tol, loose, eff, regions };
+      // si cambia tentativo solo se migliora in modo netto (meno triangoli sciolti o, a parità, meno facce): preferisce la tolleranza più stretta
+      if (!best || eff < best.eff * 0.8 || (eff <= best.eff && regions < best.regions * 0.9)) best = cur;
+      else if (prev && eff >= prev.eff && regions >= prev.regions) break;   // nessun miglioramento rispetto al gradino precedente: inutile salire
+      prev = cur;
+      if (loose === 0) break;                                              // nessun triangolo sciolto: finito
+    }
+    return { seg: best.seg, tol: best.tol, tries };
+  }
   function analyse(soup, opts) {
     const M = buildMesh(soup);
-    const seg = segment(M, opts);
-    return { M, seg };
+    // [2026-10-21 v1.10.0] prima: const seg = segment(M, opts);  (opts.autoTol: tolleranza automatica, vedi segmentAuto)
+    const a = opts.autoTol ? segmentAuto(M, opts) : null;
+    const seg = a ? a.seg : segment(M, opts);
+    return { M, seg, tol: a ? a.tol : opts.tol };
   }
 
-  const API = { VERSION, parseFile, parseSTL, parseOBJ, parse3MF, buildMesh, segment, exportSTEP, analyse, fitCylinder, fitSphere, fitPlane, fitCone, fitTorus, fitBSpline, detectThread, threadsToCylinders, fixNonManifold, findSelfIntersections, repairSelfIntersections, fitBSplineClosed, reportPdf, fillHoles, features, deviation, surfDist, editRegions, regionStats, resizeHole, holeTarget, HOLE_SIZES, verifyStep };
+  const API = { VERSION, parseFile, parseSTL, parseOBJ, parse3MF, buildMesh, segment, segmentAuto, exportSTEP, analyse, fitCylinder, fitSphere, fitPlane, fitCone, fitTorus, fitBSpline, detectThread, threadsToCylinders, fixNonManifold, findSelfIntersections, repairSelfIntersections, fitBSplineClosed, reportPdf, fillHoles, features, deviation, surfDist, editRegions, regionStats, resizeHole, holeTarget, HOLE_SIZES, verifyStep };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   else root.M2S = API;
 })(typeof self !== 'undefined' ? self : this);

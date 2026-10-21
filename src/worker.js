@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — worker.js
- * Versione: 1.9.0 — 2026-10-09 09:53 (Europe/Rome)
+ * Versione: 1.10.0 — 2026-10-21 14:15 (Europe/Rome)
  * Versione precedente archiviata in archive/worker_v1.0.0_20261005-1710.js (2026-10-06: riscrittura
  * per editing, riparazione, export STL/OBJ, deviazione, corpi).
  *
@@ -9,7 +9,7 @@
  *   load    {name, buf}            -> {positions, info}
  *   repair  {}                     -> {positions, info, holes, added}   chiude i buchi
  *   repairSelf {}                  -> {positions, info, ok, reason, before, after, merged, kept}  unione booleana dei corpi sovrapposti [v1.7.0]
- *   analyse {opts}                 -> risultato analisi (vedi result())
+ *   analyse {opts}                 -> risultato analisi (vedi result()); opts.autoTol: alza la tolleranza se restano troppi triangoli sfaccettati -> {tolUsed, tries} [v1.10.0]
  *   edit    {ids, as, maxErr}      -> risultato analisi aggiornato      (unione/conversione facce)
  *   hole    {region, mode, size, dia}  -> risultato analisi + {positions, info, diameter, label}  modifica del diametro di un foro [v1.8.0]
  *   undo    {}                     -> risultato analisi precedente (+ positions/info se l'ultima modifica era un foro)
@@ -113,8 +113,12 @@ self.onmessage = async ({ data }) => {
       reply({ positions: pos, info, ok: r.ok, reason: r.reason || '', before: r.before, after: r.after, merged: r.merged, kept: r.kept }, [pos.buffer]);
     } else if (cmd === 'analyse') {
       const t0 = performance.now();
-      lastOpts = data.opts; seg = M2S.segment(M, data.opts); history.length = 0;
-      const { msg, transfer } = result({ ms: performance.now() - t0 });
+      // [2026-10-21 v1.10.0] prima: lastOpts = data.opts; seg = M2S.segment(M, data.opts); history.length = 0;
+      lastOpts = data.opts; history.length = 0;
+      let tolUsed = data.opts.tol, tries = null;
+      if (data.opts.autoTol) { const a = M2S.segmentAuto(M, data.opts); seg = a.seg; tolUsed = a.tol; tries = a.tries; }
+      else seg = M2S.segment(M, data.opts);
+      const { msg, transfer } = result({ ms: performance.now() - t0, tolUsed, tries });
       reply(msg, transfer);
     } else if (cmd === 'edit') {
       const next = M2S.editRegions(M, seg, data.ids, data.as, data.maxErr);
