@@ -1,5 +1,14 @@
 # CHANGELOG — Mesh2STEP
-Versione documento: 1.11.2 — 2026-10-21 20:51
+Versione documento: 1.12.0 — 2026-10-21 21:49
+
+## 22. [1.12.0] — 2026-10-21 21:49 — Port dell'adattatore di superfici di SimpleCAD (sperimentale)
+- **`segmentSimpleCAD(M, {tol, cylinders})`** in `src/core.js` (sezione 6): traduzione in JavaScript di `simplecad/surfaces/fit.py` (SimpleCAD 0.38.0, MIT; avviso in `THIRD_PARTY_NOTICES.md` e nell'intestazione della sezione): regioni tra spigoli vivi (≥ 30°) con normali in prestito per le schegge; un cilindro se segue tutta la regione (asse = direzione evitata dalle normali, raggio a metà tra punto più lontano e più vicino, tutto entro ¾ tol); altrimenti parti entro 60° dalla propria normale (k-means sferico + assorbimento dei frammenti); per ogni parte piano (tol/4) o campo di altezze B-spline cubico con **nodi non uniformi raffittiti dove serve**, vincolato su vertici (tol/2, bordo tol/4) e su **campioni lungo gli spigoli e dentro i triangoli** (tol, bordo tol/2), con seconda soluzione che segue la prima fila di triangoli vicini; divisione delle patch che non si adattano (pieghe ≥ 8°, poi direzione delle facce, poi a metà) fino al singolo triangolo; `tidy` e `settle_slivers`.
+- Export: B-spline con nodi non uniformi (`r.ub`/`r.vb`).
+- Differenze dal Python: algebra densa (massimo 12 span per direzione invece di 48), niente raffinamento non lineare dell'asse del cilindro, la parte FreeCAD (costruzione delle facce con OpenCASCADE, validazione e ripiego) **non è portabile** nel browser senza OpenCASCADE.
+- **Risultati del port** (per questo resta sperimentale, solo API, non nell'interfaccia): plate_hole 7 facce e bump 6 facce come il motore Mesh2STEP; dome 113 facce (cupola spezzata in 107 B-spline per il limite di 12 span), scoop 346 facce; rounded_plate 19 facce con volume OpenCASCADE 10 628 contro 11 426 (−7%: facce piane ritagliate male, causa non trovata); file Plenum 1 192 facce e 7 facce non valide (motore Mesh2STEP: 414 facce, 6 non valide).
+- Provato e scartato: archi solo con ≥ 5 punti come in SimpleCAD (Plenum: una faccia non valida in più).
+- Test: `tests/test_simplecad.js` (plate_hole 6 piani + 1 cilindro, bump 5 piani + 1 B-spline, `verifyStep`), in CI. 28/28 STEP dei campioni ancora validi con il motore predefinito.
+- Prossimo passo proposto: usare OpenCASCADE nel browser (opencascade.js, WebAssembly) per costruire e validare le facce come fa SimpleCAD in FreeCAD, con ripiego per faccia.
 
 ## 21. [1.11.2] — 2026-10-21 20:51 — Bordi portati sulle superfici (idea da SimpleCAD) e analisi di SimpleCAD
 **SimpleCAD** (https://github.com/igsova/SimpleCAD, addon FreeCAD, licenza MIT, v0.38): modellazione diretta «alla SketchUp» con conversione mesh → CAD (`simplecad/mesh/conversion.py`, `surfaces.py`, `curved.py`, `planar.py`). Idee rilevanti per noi (dettagli in CONTEXT.md):

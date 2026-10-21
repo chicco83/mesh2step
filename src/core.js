@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — core.js
- * Versione: 1.11.2 — 2026-10-21 20:51 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
+ * Versione: 1.12.0 — 2026-10-21 21:49 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
  * ---------------------------------------------------------------------------
  * Motore indipendente dalla UI (gira nel Web Worker del browser e in Node per i test).
  *   1. Parsing  : STL (binario/ASCII), OBJ, 3MF (zip letto a mano + DecompressionStream)
@@ -22,7 +22,8 @@
   // [2026-10-21 18:27 v1.11.0] const VERSION = '1.10.0';
   // [2026-10-21 19:26 v1.11.1] const VERSION = '1.11.0';
   // [2026-10-21 20:51 v1.11.2] const VERSION = '1.11.1';
-  const VERSION = '1.11.2';
+  // [2026-10-21 21:49 v1.12.0] const VERSION = '1.11.2';
+  const VERSION = '1.12.0';
 
   // ===================== Helper vettoriali (array [x,y,z]) =====================
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -2217,6 +2218,7 @@
             const ctr = add(pl.origin, add(mul(u, c.cx), mul(w, c.cy)));
             let err = 0; for (const p of uniq) err = Math.max(err, Math.abs(len(sub(p, ctr)) - c.r));
             const radii = curvedRadii(ch.edges[0]);
+            // [2026-10-21 v1.12.0] provato ≥ 5 punti come SimpleCAD: sul file Plenum una faccia non valida in più → resta ≥ 4
             const supported = uniq.length >= 4 || radii.some(r => Math.abs(r - c.r) <= tol);
             // [v1.1.0 2026-10-06] se la catena borda un cilindro/cono coassiale usa asse e raggio esatti
             // della superficie (spigolo coerente con la faccia, anche dopo lo snap)
@@ -2373,8 +2375,12 @@
         const sv = r.closedU ? r.segsV : r.segs;
         const mult = [4, ...Array(r.segs - 1).fill(1), 4].join(','), kn = [...Array(r.segs + 1).keys()].map(i => stepNum(i)).join(',');
         const multV = [4, ...Array(sv - 1).fill(1), 4].join(','), knV = [...Array(sv + 1).keys()].map(i => stepNum(i)).join(',');
+        // [v1.12.0] superfici del port SimpleCAD: nodi non uniformi (r.ub / r.vb = punti di rottura)
+        const U = r.ub ? { m: [4, ...Array(r.ub.length - 2).fill(1), 4].join(','), k: r.ub.map(x => stepNum(x)).join(',') } : { m: mult, k: kn };
+        const Vk = r.vb ? { m: [4, ...Array(r.vb.length - 2).fill(1), 4].join(','), k: r.vb.map(x => stepNum(x)).join(',') } : { m: multV, k: knV };
         // [v1.5.0] prima: ...,.UNSPECIFIED.,.F.,.F.,.F.,(${mult}),(${mult}),(${kn}),(${kn}),.UNSPECIFIED.) con gli stessi nodi in u e v
-        surf = E(`B_SPLINE_SURFACE_WITH_KNOTS('',3,3,(${rows}),.UNSPECIFIED.,${r.closedU ? '.T.' : '.F.'},.F.,.F.,(${mult}),(${multV}),(${kn}),(${knV}),.UNSPECIFIED.)`);
+        // [v1.12.0] prima: ...,(${mult}),(${multV}),(${kn}),(${knV}),...
+        surf = E(`B_SPLINE_SURFACE_WITH_KNOTS('',3,3,(${rows}),.UNSPECIFIED.,${r.closedU ? '.T.' : '.F.'},.F.,.F.,(${U.m}),(${Vk.m}),(${U.k}),(${Vk.k}),.UNSPECIFIED.)`);
         if (r.closedU) sense = r.outward ? '.T.' : '.F.';
       }
       else if (r.type === 'freeform') { const t = fi.tris[0], n = [M.N[3 * t], M.N[3 * t + 1], M.N[3 * t + 2]]; surf = E(`PLANE('',${place(M.P(M.T[3 * t]), n, perp(n))})`); }
@@ -2515,6 +2521,311 @@
   }
 
   // ======================== Pipeline completa ========================
+  // ============================ 6. PORT DI SIMPLECAD (MIT) ============================
+  // [v1.12.0 2026-10-21] Traduzione in JavaScript dell'adattatore di superfici di SimpleCAD
+  // (https://github.com/igsova/SimpleCAD, simplecad/surfaces/fit.py, release 0.38.0, commit 9180c4b).
+  // Copyright (c) 2026 SimpleCAD contributors — licenza MIT:
+  //   Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files
+  //   (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge,
+  //   publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so,
+  //   subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or
+  //   substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
+  // Metodo: regioni lisce tra spigoli vivi (≥ 30°) → un cilindro se segue tutta la regione → altrimenti parti che guardano la propria normale
+  // media entro 60° → per ognuna un piano (vertici entro tol/4) o un campo di altezze B-spline cubico con nodi raffittiti dove serve,
+  // controllato su vertici (tol/2, bordo tol/4) e su campioni lungo spigoli e dentro i triangoli (tol, bordo tol/2) → se non basta la patch
+  // si divide (pieghe più forti, poi direzione delle facce, poi a metà) fino al singolo triangolo piano. Poi «tidy» (triangoli isolati alla
+  // patch che li circonda) e «settle_slivers» (triangoli degeneri alla patch oltre il lato lungo).
+  // Differenze dal Python: algebra densa al posto di scipy.sparse (MAX_SPANS 12 invece di 48), niente raffinamento ai minimi quadrati non
+  // lineari dell'asse del cilindro, «borrow normals» senza la coda di priorità finale.
+  const SC = { SHARP: 30, TILT: 60, SPANS: 12, PATCHES: 2000, BISECT: 10 };
+  function scBasis(knots, x) {   // B-spline cubica a nodi qualsiasi (bloccata): indice di span e 4 pesi (de Boor)
+    const p = 3, n = knots.length - p - 1;
+    x = Math.min(Math.max(x, knots[p]), knots[n]);
+    let k = p; while (k < n - 1 && x >= knots[k + 1]) k++;
+    const N = [1, 0, 0, 0], left = [0, 0, 0, 0], right = [0, 0, 0, 0];
+    for (let j = 1; j <= p; j++) {
+      left[j] = x - knots[k + 1 - j]; right[j] = knots[k + j] - x; let saved = 0;
+      for (let r = 0; r < j; r++) { const den = right[r + 1] + left[j - r], tmp = den !== 0 ? N[r] / den : 0; N[r] = saved + right[r + 1] * tmp; saved = left[j - r] * tmp; }
+      N[j] = saved;
+    }
+    return { k: k - p, w: N };   // pesi per i punti di controllo k-p … k
+  }
+  const scClamp = br => [br[0], br[0], br[0], ...br, br[br.length - 1], br[br.length - 1], br[br.length - 1]];
+  function scFacets(M) {
+    const nT = M.nT, Nv = new Float64Array(M.N), areas = new Float64Array(nT), sliver = new Uint8Array(nT);
+    let mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+    for (let v = 0; v < M.nV; v++) for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], M.V[3 * v + k]); mx[k] = Math.max(mx[k], M.V[3 * v + k]); }
+    const extent = len(sub(mx, mn)) || 1, longestK = new Int8Array(nT);
+    for (let t = 0; t < nT; t++) {
+      const a = M.P(M.T[3 * t]), b = M.P(M.T[3 * t + 1]), c = M.P(M.T[3 * t + 2]), L = [len(sub(b, a)), len(sub(c, b)), len(sub(a, c))];
+      const lo = Math.max(...L); longestK[t] = L.indexOf(lo);
+      sliver[t] = 2 * M.A[t] < Math.max(1e-3 * lo, 1e-4 * extent) * lo ? 1 : 0; areas[t] = sliver[t] ? 0 : M.A[t];
+    }
+    // normali prese in prestito: una scheggia prende la normale del primo triangolo vero oltre il suo lato lungo
+    for (let t = 0; t < nT; t++) if (sliver[t]) {
+      let u = t; for (let g = 0; g < 64 && sliver[u]; g++) { const w = M.nb[3 * u + longestK[u]]; if (w < 0 || w === t) break; u = w; }
+      if (!sliver[u]) for (let k = 0; k < 3; k++) Nv[3 * t + k] = Nv[3 * u + k];
+    }
+    const nrm = t => [Nv[3 * t], Nv[3 * t + 1], Nv[3 * t + 2]];
+    const dih = new Float64Array(nT * 3).fill(180);   // per semi-spigolo (t, k): diedro col vicino
+    for (let t = 0; t < nT; t++) for (let k = 0; k < 3; k++) { const u = M.nb[3 * t + k]; if (u >= 0) dih[3 * t + k] = Math.acos(Math.max(-1, Math.min(1, dot(nrm(t), nrm(u))))) * 180 / Math.PI; }
+    return { M, nT, Nv, nrm, areas, sliver, extent, dih, crease: k3 => dih[k3] >= SC.SHARP || M.nb[k3] < 0 };
+  }
+  const scVerts = (F, tris) => { const s = new Set(); for (const t of tris) for (let k = 0; k < 3; k++) s.add(F.M.T[3 * t + k]); return [...s]; };
+  const scMeanN = (F, tris) => { let m = [0, 0, 0]; for (const t of tris) m = add(m, mul(F.nrm(t), F.areas[t] + 1e-12)); const l = len(m); return l > 1e-300 ? mul(m, 1 / l) : null; };
+  function scComponents(F, tris, same) {   // parti connesse di `tris` (same(t,u) = stesso gruppo)
+    const inS = new Map(tris.map((t, i) => [t, i])), seen = new Uint8Array(tris.length), out = [];
+    for (let i = 0; i < tris.length; i++) {
+      if (seen[i]) continue; const comp = [tris[i]]; seen[i] = 1;
+      for (let q = 0; q < comp.length; q++) for (let k = 0; k < 3; k++) { const t = comp[q], u = F.M.nb[3 * t + k]; if (u < 0) continue; const j = inS.get(u); if (j === undefined || seen[j] || !same(t, u, k)) continue; seen[j] = 1; comp.push(u); }
+      out.push(comp);
+    }
+    return out;
+  }
+  function scClusters(F, tris, k) {   // k-means sferico con semi lontani (deterministico)
+    const N = tris.map(t => F.nrm(t)), W = tris.map(t => F.areas[t] + 1e-12);
+    let best = 0; for (let i = 1; i < W.length; i++) if (W[i] > W[best]) best = i;
+    let C = [N[best]];
+    while (C.length < k) { let j = 0, low = Infinity; for (let i = 0; i < N.length; i++) { const near = Math.max(...C.map(c => dot(N[i], c))); if (near < low) { low = near; j = i; } } C.push(N[j]); }
+    let lab = new Int32Array(N.length);
+    for (let it = 0; it < 40; it++) {
+      for (let i = 0; i < N.length; i++) { let b = 0, bv = -Infinity; for (let c = 0; c < C.length; c++) { const v = dot(N[i], C[c]); if (v > bv) { bv = v; b = c; } } lab[i] = b; }
+      const S = C.map(() => [0, 0, 0]); for (let i = 0; i < N.length; i++) S[lab[i]] = add(S[lab[i]], mul(N[i], W[i]));
+      let moved = false; const C2 = S.map((s, c) => { const l = len(s); if (l < 1e-300) return C[c]; const n = mul(s, 1 / l); if (len(sub(n, C[c])) > 1e-9) moved = true; return n; });
+      C = C2; if (!moved) break;
+    }
+    return lab;
+  }
+  function scTilted(F, tris) {   // divide finché ogni parte guarda la propria normale media entro 60°
+    const cosL = Math.cos(SC.TILT * Math.PI / 180);
+    let lab = new Int32Array(tris.length);
+    for (let k = 1; k <= 32; k++) {
+      if (k > 1) lab = scClusters(F, tris, k);
+      let worst = 1;
+      for (let c = 0; c < k; c++) { const sel = tris.filter((_, i) => lab[i] === c); if (!sel.length) continue; const m = scMeanN(F, sel); if (!m) continue; for (const t of sel) worst = Math.min(worst, dot(F.nrm(t), m)); }
+      if (worst >= cosL) break;
+    }
+    const L = new Map(tris.map((t, i) => [t, lab[i]]));
+    return scAbsorb(F, scComponents(F, tris, (t, u) => L.get(t) === L.get(u)));
+  }
+  function scAbsorb(F, parts) {   // frammenti piccoli uniti alla parte vicina con più spigoli in comune (se resta entro 60°)
+    if (parts.length < 2) return parts;
+    const cosL = Math.cos(SC.TILT * Math.PI / 180), lab = new Map(); parts.forEach((p, i) => p.forEach(t => lab.set(t, i)));
+    const total = parts.reduce((s, p) => s + p.length, 0), order = [...parts.keys()].sort((a, b) => parts[a].length - parts[b].length);
+    for (const i of order) {
+      const part = parts[i]; if (part.length > Math.max(8, Math.floor(total / 50))) break;
+      const cnt = new Map(); for (const t of part) for (let k = 0; k < 3; k++) { const u = F.M.nb[3 * t + k]; if (u < 0) continue; const j = lab.get(u); if (j === undefined || j === i) continue; cnt.set(j, (cnt.get(j) || 0) + 1); }
+      for (const [j] of [...cnt].sort((a, b) => b[1] - a[1])) {
+        const joined = parts[j].concat(part), m = scMeanN(F, joined); if (!m) continue;
+        if (joined.every(t => dot(F.nrm(t), m) >= cosL)) { parts[j] = joined; parts[i] = []; for (const t of part) lab.set(t, j); break; }
+      }
+    }
+    return parts.filter(p => p.length);
+  }
+  function scRegions(F) { return scComponents(F, [...Array(F.nT).keys()], (t, u, k) => F.dih[3 * t + k] < SC.SHARP); }
+  function scPlane(pts) { const pl = fitPlane(pts); return pl; }
+  // campioni sui triangoli: lungo gli spigoli (passo `spacing`, metà sul bordo) e centroidi dei triangoli bisecati finché i lati ≤ passo locale
+  function scSamples(F, tris, spacing, boundary, localSp) {
+    const M = F.M, out = [], onB = [], seenE = new Set();
+    for (const t of tris) for (let k = 0; k < 3; k++) {
+      const a = M.T[3 * t + k], b = M.T[3 * t + (k + 1) % 3], key = a < b ? a + ',' + b : b + ',' + a; if (seenE.has(key)) continue; seenE.add(key);
+      const pa = M.P(a), pb = M.P(b), bd = boundary.has(a) && boundary.has(b), step = bd ? spacing / 2 : spacing, n = Math.min(512, Math.max(1, Math.ceil(len(sub(pb, pa)) / step)));
+      for (let i = 0; i < n; i++) { out.push(add(pa, mul(sub(pb, pa), (i + 0.5) / n))); onB.push(bd); }
+    }
+    tris.forEach((t, ti) => {
+      let stack = [[M.P(M.T[3 * t]), M.P(M.T[3 * t + 1]), M.P(M.T[3 * t + 2]), 0]]; const sp = localSp[ti];
+      while (stack.length) {
+        const [a, b, c, d] = stack.pop(), L = [len(sub(b, a)), len(sub(c, b)), len(sub(a, c))], lo = Math.max(...L);
+        if (lo <= sp || d >= SC.BISECT) { out.push(mul(add(add(a, b), c), 1 / 3)); onB.push(false); continue; }
+        const r = L.indexOf(lo), P3 = [a, b, c], p0 = P3[r], p1 = P3[(r + 1) % 3], p2 = P3[(r + 2) % 3], m = mul(add(p0, p1), 0.5);
+        stack.push([p0, m, p2, d + 1], [m, p1, p2, d + 1]);
+      }
+    });
+    return { pts: out, onB };
+  }
+  function scField(origin, e1, e2, e3, ub, vb, H) {   // campo di altezze B-spline: origin + s e1 + t e2 + h(s,t) e3
+    const uk = scClamp(ub), vk = scClamp(vb), nu = ub.length + 2, nv = vb.length + 2;
+    const h = (s, t) => { const U = scBasis(uk, s), V = scBasis(vk, t); let z = 0; for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) z += U.w[i] * V.w[j] * H[(U.k + i) * nv + V.k + j]; return z; };
+    const local = p => { const d = sub(p, origin); return [dot(d, e1), dot(d, e2), dot(d, e3)]; };
+    const greville = (k, n) => [...Array(n).keys()].map(i => (k[i + 1] + k[i + 2] + k[i + 3]) / 3);
+    const gu = greville(uk, nu), gv = greville(vk, nv);
+    const cp = gu.map((u, i) => gv.map((v, j) => add(origin, add(add(mul(e1, u), mul(e2, v)), mul(e3, H[i * nv + j])))));
+    return { kind: 'bspline', origin, e1, e2, e3, ub, vb, uk, vk, nu, nv, H, h, local, cp,
+      dist: p => { const [s, t, z] = local(p); return Math.abs(h(s, t) - z); },
+      proj: p => { const [s, t] = local(p); return add(origin, add(add(mul(e1, s), mul(e2, t)), mul(e3, h(s, t)))); } };
+  }
+  function scFit(F, tris0, tol, planeTol, around) {
+    const M = F.M; let tris = tris0.filter(t => !F.sliver[t]); if (!tris.length) tris = tris0;
+    const verts = scVerts(F, tris); if (verts.length < 3) return null;
+    const pts = verts.map(v => M.P(v)), pl = scPlane(pts), axis = scMeanN(F, tris); if (!axis) return null;
+    if (pl.maxErr <= (planeTol == null ? tol / 4 : planeTol)) return { kind: 'plane', origin: pl.origin, normal: dot(pl.normal, axis) >= 0 ? pl.normal : mul(pl.normal, -1), error: pl.maxErr };
+    if (tris.length < 2 || tris.some(t => dot(F.nrm(t), axis) < Math.cos((SC.TILT + 15) * Math.PI / 180))) return null;
+    // asse principale nel piano ⟂ alla normale media
+    const c0 = pl.origin; let S = [0, 0, 0, 0, 0, 0];
+    for (const p of pts) { let d = sub(p, c0); d = sub(d, mul(axis, dot(d, axis))); S[0] += d[0] * d[0]; S[1] += d[0] * d[1]; S[2] += d[0] * d[2]; S[3] += d[1] * d[1]; S[4] += d[1] * d[2]; S[5] += d[2] * d[2]; }
+    let e1 = eigSym3(S)[2].vec; e1 = sub(e1, mul(axis, dot(e1, axis))); if (len(e1) < 1e-12) e1 = perp(axis); e1 = norm(e1); const e2 = cross(axis, e1);
+    const loc = p => { const d = sub(p, c0); return [dot(d, e1), dot(d, e2), dot(d, axis)]; };
+    // la proiezione deve conservare l'orientamento di ogni triangolo
+    const st2 = t => [0, 1, 2].map(k => loc(M.P(M.T[3 * t + k])));
+    const signed = c => (c[1][0] - c[0][0]) * (c[2][1] - c[0][1]) - (c[1][1] - c[0][1]) * (c[2][0] - c[0][0]);
+    for (const t of tris) if (!F.sliver[t] && signed(st2(t)) <= 0) return null;
+    const inTri = new Set(tris), V = pts.map(loc);
+    let aroundOK = (around || []).filter(t => signed(st2(t)) > 0), extra = scVerts(F, aroundOK).filter(v => !verts.includes(v)).map(v => loc(M.P(v)));
+    let lo = [Infinity, Infinity], hi = [-Infinity, -Infinity];
+    for (const q of V) for (let k = 0; k < 2; k++) { lo[k] = Math.min(lo[k], q[k]); hi[k] = Math.max(hi[k], q[k]); }
+    const size = [hi[0] - lo[0], hi[1] - lo[1]], smax = Math.max(...size);
+    for (const q of extra) for (let k = 0; k < 2; k++) { lo[k] = Math.min(lo[k], q[k]); hi[k] = Math.max(hi[k], q[k]); }
+    const pad = 0.03 * smax + tol; lo = lo.map(x => x - pad); hi = hi.map(x => x + pad);
+    const spans = size.map(s => Math.max(1, Math.round(4 * s / smax))), smallest = Math.max(hi[0] - lo[0], hi[1] - lo[1]) / (4 * SC.SPANS);
+    let ub = [...Array(spans[0] + 1).keys()].map(i => lo[0] + (hi[0] - lo[0]) * i / spans[0]), vb = [...Array(spans[1] + 1).keys()].map(i => lo[1] + (hi[1] - lo[1]) * i / spans[1]);
+    // bordo della patch: vertici sugli spigoli che escono dalla patch
+    const boundary = new Set();
+    for (const t of tris) for (let k = 0; k < 3; k++) { const u = M.nb[3 * t + k]; if (u < 0 || !inTri.has(u)) { boundary.add(M.T[3 * t + k]); boundary.add(M.T[3 * t + (k + 1) % 3]); } }
+    const vW = verts.map(v => boundary.has(v) ? 4 : 1), vLim = verts.map(v => boundary.has(v) ? tol / 4 : tol / 2);
+    const spanW = (br, x) => { let k = 0; while (k < br.length - 2 && x >= br[k + 1]) k++; return br[k + 1] - br[k]; };
+    for (let iter = 0; iter < 16; iter++) {
+      const nu = ub.length + 2, nv = vb.length + 2, K = nu * nv; if (K > 400) return null;
+      const spacing = Math.min(...ub.slice(1).map((x, i) => x - ub[i]), ...vb.slice(1).map((x, i) => x - vb[i])) / 2;
+      const localSp = tris.map(t => Math.min(...st2(t).map(q => Math.min(spanW(ub, q[0]), spanW(vb, q[1])))));
+      const smp = scSamples(F, tris, spacing, boundary, localSp);
+      const data = V.map((q, i) => ({ q, w: vW[i], lim: vLim[i] })).concat(smp.pts.map((p, i) => ({ q: loc(p), w: smp.onB[i] ? 1 : 0.25, lim: smp.onB[i] ? tol / 2 : tol })));
+      const uk = scClamp(ub), vk = scClamp(vb);
+      const rowsOf = list => list.map(d => { const U = scBasis(uk, d.q[0]), Vv = scBasis(vk, d.q[1]), idx = [], val = []; for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { idx.push((U.k + i) * nv + Vv.k + j); val.push(U.w[i] * Vv.w[j]); } return { idx, val, z: d.q[2], w: d.w, lim: d.lim }; });
+      const rows = rowsOf(data);
+      const solveH = rs => {
+        const A = [...Array(K)].map(() => new Float64Array(K)), b = new Float64Array(K);
+        for (const r of rs) for (let a = 0; a < 16; a++) { b[r.idx[a]] += r.w * r.val[a] * r.z; for (let c = 0; c < 16; c++) A[r.idx[a]][r.idx[c]] += r.w * r.val[a] * r.val[c]; }
+        let md = 0; for (let i = 0; i < K; i++) md += A[i][i]; const sm = 1e-3 * md / K;
+        const addR = (ids, ws) => { for (let a = 0; a < ids.length; a++) for (let c = 0; c < ids.length; c++) A[ids[a]][ids[c]] += sm * ws[a] * ws[c]; };
+        for (let i = 0; i < nu; i++) for (let j = 0; j < nv; j++) {
+          if (i + 2 < nu) addR([i * nv + j, (i + 1) * nv + j, (i + 2) * nv + j], [1, -2, 1]);
+          if (j + 2 < nv) addR([i * nv + j, i * nv + j + 1, i * nv + j + 2], [1, -2, 1]);
+          if (i + 1 < nu && j + 1 < nv) addR([i * nv + j, (i + 1) * nv + j, i * nv + j + 1, (i + 1) * nv + j + 1], [Math.SQRT2, -Math.SQRT2, -Math.SQRT2, Math.SQRT2]);
+        }
+        return solve(A.map(r => Array.from(r)), Array.from(b));
+      };
+      let H = solveH(rows); if (!H || !H.every(isFinite)) return null;
+      const resid = (Hh, rs) => rs.map(r => { let s = 0; for (let a = 0; a < 16; a++) s += r.val[a] * Hh[r.idx[a]]; return Math.abs(s - r.z); });
+      let res = resid(H, rows), bad = res.map((e, i) => e > rows[i].lim);
+      if (!bad.some(x => x)) {
+        if (aroundOK.length) {   // seconda soluzione che segue leggermente anche la prima fila di triangoli vicini
+          const gs = scSamples(F, aroundOK, spacing, boundary, aroundOK.map(() => spacing));
+          const guide = extra.map(q => ({ q, w: 0.1, lim: Infinity })).concat(gs.pts.map(p => ({ q: loc(p), w: 0.1, lim: Infinity })));
+          const H2 = solveH(rows.concat(rowsOf(guide)));
+          if (H2 && H2.every(isFinite)) { const r2 = resid(H2, rows); if (r2.every((e, i) => e <= rows[i].lim)) { H = H2; res = r2; } }
+        }
+        const fld = scField(c0, e1, e2, axis, ub, vb, H);
+        fld.error = Math.max(...res.slice(0, V.length)); fld.sampleError = Math.max(0, ...res.slice(V.length));
+        return fld;
+      }
+      const refine = (br, vals) => {
+        if (!vals.length || br.length - 1 >= SC.SPANS) return null;
+        const marks = new Map(); for (const x of vals) { let k = 0; while (k < br.length - 2 && x >= br[k + 1]) k++; if (br[k + 1] - br[k] >= 2 * smallest) marks.set(k, (marks.get(k) || 0) + 1); }
+        if (!marks.size) return null;
+        let mk = [...marks].sort((a, b) => b[1] - a[1]).map(x => x[0]).slice(0, SC.SPANS - (br.length - 1));
+        return [...br, ...mk.map(k => (br[k] + br[k + 1]) / 2)].sort((a, b) => a - b);
+      };
+      const bu = data.filter((_, i) => bad[i]).map(d => d.q[0]), bv = data.filter((_, i) => bad[i]).map(d => d.q[1]);
+      const ru = refine(ub, bu), rv = refine(vb, bv);
+      if (!ru && !rv) return null;
+      if (ru) ub = ru; if (rv) vb = rv;
+    }
+    return null;
+  }
+  function scCylinder(F, tris0, tol) {
+    const M = F.M, solid = tris0.filter(t => !F.sliver[t]); if (solid.length < 4) return null;
+    const verts = scVerts(F, solid), pts = verts.map(v => M.P(v));
+    if (scPlane(pts).maxErr <= tol / 4) return null;
+    const S = [0, 0, 0, 0, 0, 0]; for (const t of solid) { const n = F.nrm(t), w = F.areas[t]; S[0] += w * n[0] * n[0]; S[1] += w * n[0] * n[1]; S[2] += w * n[0] * n[2]; S[3] += w * n[1] * n[1]; S[4] += w * n[1] * n[2]; S[5] += w * n[2] * n[2]; }
+    const axis = norm(eigSym3(S)[0].vec), e1 = perp(axis), e2 = cross(axis, e1);
+    const c = fitCircle2D(pts.map(p => [dot(p, e1), dot(p, e2)])); if (!c) return null;
+    const origin = add(mul(e1, c.cx), mul(e2, c.cy));
+    const radial = p => { const d = sub(p, origin); return sub(d, mul(axis, dot(d, axis))); };
+    let reach = pts.map(p => len(radial(p))), R = reach.reduce((s, x) => s + x, 0) / reach.length;
+    if (!(tol < R && R <= F.extent) || Math.max(...reach) - Math.min(...reach) > 1.5 * tol) return null;
+    let facing = 0; const fac = solid.map(t => { const ctr = [M.C[3 * t], M.C[3 * t + 1], M.C[3 * t + 2]], r = norm(radial(ctr)); const f = dot(F.nrm(t), r); facing += f; return f; });
+    const outward = facing > 0; if (Math.min(...fac.map(f => outward ? f : -f)) < Math.cos(SC.TILT * Math.PI / 180)) return null;
+    const spacing = Math.max(Math.sqrt(R * tol), tol), smp = scSamples(F, solid, spacing, new Set(), solid.map(() => spacing)).pts;
+    const all = pts.concat(smp).map(p => len(radial(p))); R = (Math.max(...all) + Math.min(...all)) / 2;
+    if (Math.max(...all.map(r => Math.abs(r - R))) > 0.75 * tol) return null;
+    let hmin = Infinity, hmax = -Infinity; for (const p of pts) { const h = dot(sub(p, origin), axis); hmin = Math.min(hmin, h); hmax = Math.max(hmax, h); }
+    return { kind: 'cylinder', axis, origin: add(origin, mul(axis, hmin)), radius: R, height: hmax - hmin, outward, error: Math.max(...all.map(r => Math.abs(r - R))) };
+  }
+  function scSplit(F, tris) {
+    if (tris.length < 2) return [];
+    const inS = new Set(tris); let maxA = 0;
+    for (const t of tris) for (let k = 0; k < 3; k++) { const u = F.M.nb[3 * t + k]; if (u >= 0 && inS.has(u)) maxA = Math.max(maxA, F.dih[3 * t + k]); }
+    if (maxA >= 8) { const cut = Math.max(8, 0.7 * maxA), parts = scComponents(F, tris, (t, u, k) => F.dih[3 * t + k] < cut); if (parts.length > 1) return parts; }
+    const lab = scClusters(F, tris, 2), L = new Map(tris.map((t, i) => [t, lab[i]])), parts = scComponents(F, tris, (t, u) => L.get(t) === L.get(u));
+    if (parts.length > 1) return parts;
+    const C = tris.map(t => [F.M.C[3 * t], F.M.C[3 * t + 1], F.M.C[3 * t + 2]]), W = tris.map(t => F.areas[t] + 1e-12), sw = W.reduce((s, x) => s + x, 0);
+    const m = mul(C.reduce((s, c, i) => add(s, mul(c, W[i])), [0, 0, 0]), 1 / sw), S = [0, 0, 0, 0, 0, 0];
+    for (const c of C) { const d = sub(c, m); S[0] += d[0] * d[0]; S[1] += d[0] * d[1]; S[2] += d[0] * d[2]; S[3] += d[1] * d[1]; S[4] += d[1] * d[2]; S[5] += d[2] * d[2]; }
+    const ax = eigSym3(S)[2].vec, side = new Map(tris.map((t, i) => [t, dot(sub(C[i], m), ax) > 0]));
+    const p2 = scComponents(F, tris, (t, u) => side.get(t) === side.get(u)); return p2.length > 1 ? p2 : [];
+  }
+  function scMargin(F, tris) {   // la prima fila di triangoli oltre gli spigoli lisci del bordo
+    const inS = new Set(tris), out = new Set();
+    for (const t of tris) for (let k = 0; k < 3; k++) { const u = F.M.nb[3 * t + k]; if (u >= 0 && !inS.has(u) && !F.crease(3 * t + k) && !F.sliver[u]) out.add(u); }
+    return [...out];
+  }
+  function scAccepts(F, s, t, tol) {
+    const cs = [0, 1, 2].map(k => F.M.P(F.M.T[3 * t + k])), dist = p => s.kind === 'plane' ? Math.abs(dot(sub(p, s.origin), s.normal)) : s.kind === 'cylinder' ? (() => { const d = sub(p, s.origin); return Math.abs(len(sub(d, mul(s.axis, dot(d, s.axis)))) - s.radius); })() : s.dist(p);
+    if (s.kind === 'bspline') { const q = cs.map(s.local); if ((q[1][0] - q[0][0]) * (q[2][1] - q[0][1]) - (q[1][1] - q[0][1]) * (q[2][0] - q[0][0]) <= 0) return false; if (q.some(x => x[0] < s.ub[0] || x[0] > s.ub[s.ub.length - 1] || x[1] < s.vb[0] || x[1] > s.vb[s.vb.length - 1])) return false; }
+    const mids = [mul(add(add(cs[0], cs[1]), cs[2]), 1 / 3), mul(add(cs[0], cs[1]), 0.5), mul(add(cs[1], cs[2]), 0.5), mul(add(cs[2], cs[0]), 0.5)];
+    return Math.max(...cs.map(dist)) <= tol / 4 && Math.max(...mids.map(dist)) <= tol / 2;
+  }
+  // segmentazione completa alla SimpleCAD → stesso formato di segment(): { face, regions }
+  function segmentSimpleCAD(M, opts) {
+    const tol = opts.tol, F = scFacets(M), patches = [], pending = [];
+    for (const region of scRegions(F)) {
+      const cyl = opts.cylinders !== false ? scCylinder(F, region, tol) : null;
+      if (cyl) patches.push({ tris: region, s: cyl }); else pending.push(...scTilted(F, region));
+    }
+    while (pending.length) {
+      if (patches.length + pending.length > SC.PATCHES) break;
+      const tris = pending.pop(), s = scFit(F, tris, tol, null, scMargin(F, tris));
+      if (s) { patches.push({ tris, s }); continue; }
+      const parts = scSplit(F, tris); if (parts.length) { pending.push(...parts); continue; }
+      for (const t of tris) { const s1 = scFit(F, [t], tol, Infinity, null); patches.push({ tris: [t], s: s1 || { kind: 'freeform' } }); }
+    }
+    for (const tris of pending) for (const t of tris) patches.push({ tris: [t], s: { kind: 'freeform' } });   // oltre il limite di patch
+    const lab = new Int32Array(M.nT); patches.forEach((p, i) => p.tris.forEach(t => { lab[t] = i; }));
+    // tidy: un triangolo con 2–3 vicini della stessa altra patch vi passa se la superficie lo accetta come bordo
+    for (let it = 0; it < 16; it++) {
+      let moved = 0;
+      for (let t = 0; t < M.nT; t++) {
+        if (F.sliver[t]) continue; const nb = [0, 1, 2].map(k => M.nb[3 * t + k]).filter(u => u >= 0).map(u => lab[u]);
+        const cnt = new Map(); for (const l of nb) cnt.set(l, (cnt.get(l) || 0) + 1);
+        let best = -1, bc = 0; for (const [l, c] of cnt) if (c > bc) { bc = c; best = l; }
+        if (best < 0 || best === lab[t] || bc < 2 || patches[best].s.kind === 'freeform') continue;
+        if (scAccepts(F, patches[best].s, t, tol)) { lab[t] = best; moved++; }
+      }
+      if (!moved) break;
+    }
+    // settle_slivers: ogni scheggia alla patch oltre il suo lato lungo
+    for (let t = 0; t < M.nT; t++) if (F.sliver[t]) {
+      let u = t; for (let g = 0; g < 64 && F.sliver[u]; g++) { const a = M.P(M.T[3 * u]), b = M.P(M.T[3 * u + 1]), c = M.P(M.T[3 * u + 2]), L = [len(sub(b, a)), len(sub(c, b)), len(sub(a, c))], w = M.nb[3 * u + L.indexOf(Math.max(...L))]; if (w < 0 || w === t) break; u = w; }
+      lab[t] = lab[u];
+    }
+    // regioni nel formato di Mesh2STEP (le patch spezzate da tidy restano un'unica regione se ancora connesse; altrimenti una per parte)
+    const groups = new Map(); for (let t = 0; t < M.nT; t++) { if (!groups.has(lab[t])) groups.set(lab[t], []); groups.get(lab[t]).push(t); }
+    const regions = [], face = new Int32Array(M.nT);
+    for (const [pi, trisAll] of groups) {
+      const s = patches[pi].s;
+      for (const tris of scComponents(F, trisAll, () => true)) {
+        const id = regions.length; let r;
+        if (s.kind === 'plane') r = { type: 'plane', normal: s.normal, origin: s.origin, err: s.error || 0 };
+        else if (s.kind === 'cylinder') r = { type: 'cylinder', axis: s.axis, origin: s.origin, radius: s.radius, height: s.height, outward: s.outward, err: s.error };
+        else if (s.kind === 'bspline') r = { type: 'bspline', cp: s.cp, nc: s.nu, nv: s.nv, segs: s.ub.length - 1, segsV: s.vb.length - 1, ub: s.ub, vb: s.vb, err: Math.max(s.error || 0, s.sampleError || 0), normal: s.e3, dist: s.dist, proj: s.proj, sc: true };
+        else r = { type: 'freeform', err: 0 };
+        if (r.type === 'plane' && tris.length <= 2 && s.kind === 'plane' && patches[pi].tris.length === 1) { /* triangolo singolo: resta piano (come in SimpleCAD) */ }
+        r.id = id; r.tris = tris; regions.push(r); for (const t of tris) face[t] = id;
+      }
+    }
+    return { face, regions };
+  }
+
   // ---- [v1.10.0] Tolleranza automatica ----
   // Se con la tolleranza richiesta restano troppi triangoli "sciolti" (freeform + frammenti di ≤ 4 triangoli), la si alza per gradini
   // (×1,5 ×2,5 ×4 ×8, mai oltre 0,4% della diagonale) e si tiene il tentativo con meno triangoli sciolti: sulle mesh rumorose (scansioni,
@@ -2552,7 +2863,7 @@
     return { M, seg, tol: a ? a.tol : opts.tol };
   }
 
-  const API = { VERSION, parseFile, parseSTL, parseOBJ, parse3MF, buildMesh, segment, segmentAuto, exportSTEP, analyse, fitCylinder, fitSphere, fitPlane, fitCone, fitTorus, fitBSpline, detectThread, threadsToCylinders, fixNonManifold, findSelfIntersections, repairSelfIntersections, fitBSplineClosed, reportPdf, fillHoles, features, deviation, surfDist, editRegions, regionStats, resizeHole, holeTarget, HOLE_SIZES, verifyStep };
+  const API = { VERSION, parseFile, parseSTL, parseOBJ, parse3MF, buildMesh, segment, segmentAuto, segmentSimpleCAD, exportSTEP, analyse, fitCylinder, fitSphere, fitPlane, fitCone, fitTorus, fitBSpline, detectThread, threadsToCylinders, fixNonManifold, findSelfIntersections, repairSelfIntersections, fitBSplineClosed, reportPdf, fillHoles, features, deviation, surfDist, editRegions, regionStats, resizeHole, holeTarget, HOLE_SIZES, verifyStep };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   else root.M2S = API;
 })(typeof self !== 'undefined' ? self : this);

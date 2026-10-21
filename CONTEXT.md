@@ -1,5 +1,5 @@
 # CONTEXT — Mesh2STEP
-Versione documento: 1.11.2 — 2026-10-21 20:51
+Versione documento: 1.12.0 — 2026-10-21 21:49
 
 ## Scopo
 Web app che converte mesh triangolari (STL, OBJ, 3MF) in file STEP con **geometria CAD reale**:
@@ -85,6 +85,7 @@ index.html ── src/app.js (UI, viewer three.js, i18n, editing, export, API in
 | 2026-10-05 | Cowork cloud | Analisi del sito di riferimento, v1.0.0 (piani, cilindri, sfere, STEP), commit `729f9ed` caricato dall'utente |
 | 2026-10-06 mattina | Cowork cloud | v1.0.1 README completo; v1.1.0–1.3.0 tutte le migliorie (commit `e1e10bb`, `61c8f81`), consegnate come git bundle perché la sessione non poteva fare push; pubblicate dall'utente; Pages verificato online |
 | 2026-10-06 14:10 | Cowork cloud | Documentazione per riprendere il lavoro da Claude Code |
+| 2026-10-21 | Claude Code (cloud) | v1.12.0: port in JS di `simplecad/surfaces/fit.py` (MIT) come `segmentSimpleCAD` sperimentale; risultati peggiori del motore Mesh2STEP senza la parte OpenCASCADE |
 | 2026-10-21 | Claude Code (cloud) | v1.11.2: analisi di SimpleCAD (addon FreeCAD); bordi portati sulle superfici; Plenum 8 → 5 facce non valide |
 | 2026-10-21 | Claude Code (cloud) | v1.11.1: indagine STEP non validi (cerchi falsi, B-spline tra i vertici, assorbimento senza rifit): scoop valido, Plenum 49 → 8 facce non valide. symplecad non accessibile |
 | 2026-10-21 | Claude Code (cloud) | v1.11.0: file reale dell'utente (Plenum, 22 394 triangoli): stadio 4d-bis patch B-spline, filettature ≥ 2,5 giri, tolleranza automatica più veloce; STEP organici non validi in OCC (noto) |
@@ -98,7 +99,7 @@ Addon FreeCAD (https://github.com/igsova/SimpleCAD, MIT, v0.38, ~32 000 righe Py
 Pipeline (`simplecad/mesh/conversion.py`): pulizia (duplicati, degeneri, non-manifold rifiutati) → **saldatura entro la tolleranza** (semi greedy, rifiutata se rende la mesh non-manifold) → per componente: cilindri analitici (`curved.reconstruct_cylinder`) → superfici adattate (`surfaces.reconstruct`: piani, cilindri, B-spline) → altrimenti regioni piane + fori circolari impressi → altrimenti triangoli; ogni passo validato con OCC (`isValid`, `fix`) e ripiego al passo più semplice; cavità annidate sottratte; `removeSplitter` per unire piani complanari.
 Punto chiave (`surfaces._chain_points`): ogni catena di bordo condivisa viene campionata e ogni punto va a **metà tra le proiezioni sulle due superfici** (dentro metà del loro scarto), oppure sull'**intersezione** (proiezioni alternate) se lo spigolo è vivo; le estremità restano condivise; i bordi lisci vengono lisciati nello spazio dei parametri. Gli archi richiedono ≥ 5 punti; un cerchio chiuso attorno a un cilindro è coassiale e parte dalla cucitura.
 Differenze: SimpleCAD lavora dentro FreeCAD con OpenCASCADE (può validare e riparare), Mesh2STEP scrive lo STEP a mano nel browser (nessuna validazione B-rep a runtime: solo `verifyStep`).
-Adottato in 1.11.2: proiezione dei bordi sulle superfici (solo tra superfici analitiche) e suddivisione dei segmenti che si staccano. Da valutare: saldatura entro tolleranza, adattamento alla prima fila di triangoli della vicina, PCURVE esplicite.
+Adottato in 1.11.2: proiezione dei bordi sulle superfici (solo tra superfici analitiche) e suddivisione dei segmenti che si staccano. 1.12.0: port completo di `fit.py` (`segmentSimpleCAD`, sezione 6 di core.js, sperimentale). La parte che rende validi i risultati di SimpleCAD è quella FreeCAD/OpenCASCADE (`mesh/surfaces.py`: facce ritagliate, validazione, ripiego): nel browser servirebbe opencascade.js.
 
 ## Problemi aperti
 - **STEP organici non validi in OpenCASCADE**: dopo la 1.11.2 restano 5 facce su ~540 nel file Plenum (4 B-spline, 1 sfera). `scoop` risolto. Idee: PCURVE esplicite, ripiego per faccia ai triangoli.

@@ -40,6 +40,8 @@ jobs:
         run: node tests/test_verify.js
       - name: Tolleranza automatica e mesh rumorose
         run: node tests/test_autotol.js
+      - name: Port SimpleCAD (sperimentale)
+        run: node tests/test_simplecad.js
       - name: Build single-file
         run: node build.mjs
       - uses: actions/upload-artifact@v4
