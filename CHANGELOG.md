@@ -1,5 +1,14 @@
 # CHANGELOG — Mesh2STEP
-Versione documento: 1.11.1 — 2026-10-21 19:26
+Versione documento: 1.11.2 — 2026-10-21 20:51
+
+## 21. [1.11.2] — 2026-10-21 20:51 — Bordi portati sulle superfici (idea da SimpleCAD) e analisi di SimpleCAD
+**SimpleCAD** (https://github.com/igsova/SimpleCAD, addon FreeCAD, licenza MIT, v0.38): modellazione diretta «alla SketchUp» con conversione mesh → CAD (`simplecad/mesh/conversion.py`, `surfaces.py`, `curved.py`, `planar.py`). Idee rilevanti per noi (dettagli in CONTEXT.md):
+ogni bordo condiviso diventa **una curva che sta su entrambe le superfici vicine** (punti a metà tra le due proiezioni, sull'intersezione se lo spigolo è vivo); saldatura dei vertici entro la tolleranza (via le schegge micrometriche); ogni superficie si adatta anche alla prima fila di triangoli della vicina; validazione con OpenCASCADE e ripiego a facce piane/triangoli se fallisce; archi solo con ≥ 5 punti; cavità annidate sottratte; unione dei piani complanari (`removeSplitter`).
+- **Adottato** (implementazione propria in JS): proiezione di un punto su ogni superficie (`projOn`: piano, cilindro, sfera, cono, toro, B-spline con `proj`); le polilinee di bordo tra superfici analitiche vengono suddivise e spostate sul bordo comune (`between`: proiezioni alternate verso l'intersezione, altrimenti metà strada; accettato solo se avvicina il punto a entrambe le superfici). Accanto alle B-spline solo suddivisione dei segmenti la cui corda si stacca di oltre tol/2 (spostare lì peggiorava). Le LINE devono stare anche sulle superfici vicine.
+- **Provato e scartato**: proiezione Gauss-Newton sul punto più vicino della B-spline (divergeva fuori dominio); spostamento dei punti anche accanto alle B-spline (Plenum 25 facce non valide contro 4); suddivisione di tutti i segmenti accanto alle B-spline (volumi di vase/scoop spostati dello 0,5–3%).
+- Frammenti da ≤ 4 triangoli anche di sfere/cilindri/coni/tori (e assorbiti anche nelle B-spline vicine, con scarto `dist`).
+- Risultati: file Plenum **8 → 5 facce non valide** su ~540 (414 facce in Mesh2STEP, tolleranza automatica 0,102); il volume letto da OCC di uno shell non valido non è affidabile (oscilla tra −15% e +1% tra le varianti). Campioni: 28/28 validi; `scoop` 6 614,98 (era 6 651,96; mesh 6 713,78), gli altri invariati.
+- Limite: restano 4 facce B-spline e 1 sferica non valide sul Plenum. Prossimo passo indicato: PCURVE esplicite (curve 2D nello spazio dei parametri della faccia) nello STEP, o ripiego per faccia ai triangoli quando il bordo si stacca dalla superficie.
 
 ## 20. [1.11.1] — 2026-10-21 19:26 — Indagine sugli STEP non validi: tre cause trovate e corrette
 Diagnosi con OpenCASCADE (`BRepCheck_Face`, `BRepCheck_Wire`, `ShapeAnalysis_Wire`, tolleranze degli spigoli dopo la lettura): le facce non valide avevano spigoli con tolleranza allargata dal lettore fino a decine di mm, cioè spigoli lontani dalla superficie della faccia.

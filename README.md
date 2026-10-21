@@ -1,5 +1,5 @@
 # Mesh2STEP
-Versione: 1.11.1 — 2026-10-21 19:26
+Versione: 1.11.2 — 2026-10-21 20:51
 <!-- [2026-10-06 13:45] Versione precedente 1.0.1 (2026-10-06 13:10): README delle funzioni v1.0
      (piani, cilindri, sfere); aggiornato con tutte le funzioni v1.1–v1.3. -->
 

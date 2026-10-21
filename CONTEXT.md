@@ -1,5 +1,5 @@
 # CONTEXT — Mesh2STEP
-Versione documento: 1.11.1 — 2026-10-21 19:26
+Versione documento: 1.11.2 — 2026-10-21 20:51
 
 ## Scopo
 Web app che converte mesh triangolari (STL, OBJ, 3MF) in file STEP con **geometria CAD reale**:
@@ -85,6 +85,7 @@ index.html ── src/app.js (UI, viewer three.js, i18n, editing, export, API in
 | 2026-10-05 | Cowork cloud | Analisi del sito di riferimento, v1.0.0 (piani, cilindri, sfere, STEP), commit `729f9ed` caricato dall'utente |
 | 2026-10-06 mattina | Cowork cloud | v1.0.1 README completo; v1.1.0–1.3.0 tutte le migliorie (commit `e1e10bb`, `61c8f81`), consegnate come git bundle perché la sessione non poteva fare push; pubblicate dall'utente; Pages verificato online |
 | 2026-10-06 14:10 | Cowork cloud | Documentazione per riprendere il lavoro da Claude Code |
+| 2026-10-21 | Claude Code (cloud) | v1.11.2: analisi di SimpleCAD (addon FreeCAD); bordi portati sulle superfici; Plenum 8 → 5 facce non valide |
 | 2026-10-21 | Claude Code (cloud) | v1.11.1: indagine STEP non validi (cerchi falsi, B-spline tra i vertici, assorbimento senza rifit): scoop valido, Plenum 49 → 8 facce non valide. symplecad non accessibile |
 | 2026-10-21 | Claude Code (cloud) | v1.11.0: file reale dell'utente (Plenum, 22 394 triangoli): stadio 4d-bis patch B-spline, filettature ≥ 2,5 giri, tolleranza automatica più veloce; STEP organici non validi in OCC (noto) |
 | 2026-10-21 | Claude Code (cloud) | v1.10.0: tolleranza automatica e robustezza al rumore (troppi triangoli mantenuti) |
@@ -92,8 +93,15 @@ index.html ── src/app.js (UI, viewer three.js, i18n, editing, export, API in
 | 2026-10-08 | Claude Code (cloud) | v1.8.0: confronto con il sito di riferimento (nuove funzioni: modifica fori, verifica STEP); implementata la **modifica foro** (`resizeHole`, comando Worker `hole`, Annulla con mesh); corretto bug di mutazione in `editRegions` |
 | 2026-10-07 | Claude Code (locale) | v1.3.1–1.3.2: colori per tipo, selezione, deviazione B-spline, fix CI, prova UI nel browser integrato. v1.4.0: filettature→cilindro, sfere spurie, sfera/toro completi, non-manifold, report PDF. v1.4.1: primo avvio reale dell'exe su Windows 11 (bug risorse con backslash corretto) |
 
+## Analisi di SimpleCAD (2026-10-21)
+Addon FreeCAD (https://github.com/igsova/SimpleCAD, MIT, v0.38, ~32 000 righe Python): modellazione diretta su solidi e mesh STL; «Make mesh editable» converte la mesh in Part.
+Pipeline (`simplecad/mesh/conversion.py`): pulizia (duplicati, degeneri, non-manifold rifiutati) → **saldatura entro la tolleranza** (semi greedy, rifiutata se rende la mesh non-manifold) → per componente: cilindri analitici (`curved.reconstruct_cylinder`) → superfici adattate (`surfaces.reconstruct`: piani, cilindri, B-spline) → altrimenti regioni piane + fori circolari impressi → altrimenti triangoli; ogni passo validato con OCC (`isValid`, `fix`) e ripiego al passo più semplice; cavità annidate sottratte; `removeSplitter` per unire piani complanari.
+Punto chiave (`surfaces._chain_points`): ogni catena di bordo condivisa viene campionata e ogni punto va a **metà tra le proiezioni sulle due superfici** (dentro metà del loro scarto), oppure sull'**intersezione** (proiezioni alternate) se lo spigolo è vivo; le estremità restano condivise; i bordi lisci vengono lisciati nello spazio dei parametri. Gli archi richiedono ≥ 5 punti; un cerchio chiuso attorno a un cilindro è coassiale e parte dalla cucitura.
+Differenze: SimpleCAD lavora dentro FreeCAD con OpenCASCADE (può validare e riparare), Mesh2STEP scrive lo STEP a mano nel browser (nessuna validazione B-rep a runtime: solo `verifyStep`).
+Adottato in 1.11.2: proiezione dei bordi sulle superfici (solo tra superfici analitiche) e suddivisione dei segmenti che si staccano. Da valutare: saldatura entro tolleranza, adattamento alla prima fila di triangoli della vicina, PCURVE esplicite.
+
 ## Problemi aperti
-- **STEP organici non validi in OpenCASCADE**: dopo la 1.11.1 restano 8 facce su ~540 nel file Plenum (5 B-spline, 3 sfere) per triangoli molto lunghi; volume OCC −12%. `scoop` risolto.
+- **STEP organici non validi in OpenCASCADE**: dopo la 1.11.2 restano 5 facce su ~540 nel file Plenum (4 B-spline, 1 sfera). `scoop` risolto. Idee: PCURVE esplicite, ripiego per faccia ai triangoli.
 - Modifica foro (1.8.0): la «filettatura» è foro di maschiatura + etichetta, non elica; da valutare un campione con foro cieco/punta conica. «Verifica STEP» (1.9.0) è un controllo leggero, non sostituisce OpenCASCADE.
 - App Windows: da provare «Apri con…»/trascinamento sull'exe e l'avvio su un PC senza runtime WebView2.
 - Pulsante «Converti in STEP»: fatto nel repo 3D STL Multipart Maker v0.6.2-beta (2026-10-07), non provato dalla versione Windows di quel programma.

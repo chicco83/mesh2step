@@ -1,5 +1,5 @@
 // Mesh2STEP — build.mjs
-// Versione: 1.11.1 — 2026-10-21 19:26 (Europe/Rome)
+// Versione: 1.11.2 — 2026-10-21 20:51 (Europe/Rome)
 // Versione precedente archiviata: archive/build_v1.0.0_20261005-1710.mjs
 // (2026-10-06: build completamente offline: three.js e OrbitControls incorporati come moduli Blob).
 //

@@ -1,5 +1,5 @@
 # MANUALE — Mesh2STEP
-Versione documento: 1.11.1 — 2026-10-21 19:26
+Versione documento: 1.11.2 — 2026-10-21 20:51
 <!-- [2026-10-06 13:45] versione precedente 1.0.0 (2026-10-05 17:10) nel repository git (commit 729f9ed). -->
 
 ## 1. Avvio

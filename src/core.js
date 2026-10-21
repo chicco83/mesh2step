@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — core.js
- * Versione: 1.11.1 — 2026-10-21 19:26 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
+ * Versione: 1.11.2 — 2026-10-21 20:51 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
  * ---------------------------------------------------------------------------
  * Motore indipendente dalla UI (gira nel Web Worker del browser e in Node per i test).
  *   1. Parsing  : STL (binario/ASCII), OBJ, 3MF (zip letto a mano + DecompressionStream)
@@ -21,7 +21,8 @@
   // [2026-10-21 14:15 v1.10.0] const VERSION = '1.9.0';
   // [2026-10-21 18:27 v1.11.0] const VERSION = '1.10.0';
   // [2026-10-21 19:26 v1.11.1] const VERSION = '1.11.0';
-  const VERSION = '1.11.1';
+  // [2026-10-21 20:51 v1.11.2] const VERSION = '1.11.1';
+  const VERSION = '1.11.2';
 
   // ===================== Helper vettoriali (array [x,y,z]) =====================
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -1099,15 +1100,17 @@
       // dalla superficie di una regione vicina più grande (piano, cilindro, sfera, cono, toro) sono solo rumore di quella superficie.
       // Prima restavano come facce separate da 1–2 triangoli (una faccia STEP ciascuna).
       {
-        const analytic = r => ['plane', 'cylinder', 'sphere', 'cone', 'torus'].includes(r.type);
-        const tiny = regions.filter(r => (r.type === 'plane' || r.type === 'freeform') && r.tris.length > 0 && r.tris.length <= 4).sort((x, y) => x.tris.length - y.tris.length);
+        const analytic = r => ['plane', 'cylinder', 'sphere', 'cone', 'torus'].includes(r.type) || (r.type === 'bspline' && !!r.dist);   // [v1.11.2] anche B-spline (scarto con r.dist)
+        // [2026-10-21 v1.11.2] prima: solo piani e freeform; ora anche sfere/cilindri/coni/tori da ≤ 4 triangoli (una "sfera" da 2 triangoli
+        // con un solo anello di 0,4 mm era una faccia degenere non valida nel file Plenum)
+        const tiny = regions.filter(r => ['plane', 'freeform', 'sphere', 'cylinder', 'cone', 'torus'].includes(r.type) && r.tris.length > 0 && r.tris.length <= 4).sort((x, y) => x.tris.length - y.tris.length);
         for (const r of tiny) {
           if (r.type === 'merged' || !r.tris.length) continue;
           const cand = new Map();
           for (const t of r.tris) for (let j = 0; j < 3; j++) { const u = M.nb[3 * t + j]; if (u < 0 || face[u] === r.id) continue; const q = regions[face[u]]; if (q.tris.length > r.tris.length && analytic(q) && q.tris.length > 4) cand.set(q.id, q); }
           let best = null, bd = Infinity;
           for (const q of cand.values()) {
-            let d = 0; for (const t of r.tris) for (let k = 0; k < 3; k++) d = Math.max(d, surfDist(q, M.P(M.T[3 * t + k])));
+            let d = 0; for (const t of r.tris) for (let k = 0; k < 3; k++) { const pk = M.P(M.T[3 * t + k]); d = Math.max(d, q.type === 'bspline' ? q.dist(pk) : surfDist(q, pk)); }
             if (d <= 1.5 * tol && d < bd) { bd = d; best = q; }
           }
           if (!best) continue;
@@ -1388,7 +1391,10 @@
         const cp = [...Array(nc).keys()].map(i => [...Array(nc).keys()].map(j => add(pl.origin, add(add(mul(e1, u0 + grev[i] * (u1 - u0)), mul(e2, v0 + grev[j] * (v1 - v0))), mul(n, z[i * nc + j])))));
         // [v1.4.0] scarto verticale (lungo la normale media) di un punto dalla superficie: per la mappa di deviazione per triangolo
         const dist = p => { const d = sub(p, pl.origin), u = dot(d, e1), v = dot(d, e2), h = dot(d, n), Bu = basis(nc, Math.min(1, Math.max(0, (u - u0) / (u1 - u0)))), Bv = basis(nc, Math.min(1, Math.max(0, (v - v0) / (v1 - v0)))); let s = 0; for (let i = 0; i < nc; i++) if (Bu[i]) for (let j = 0; j < nc; j++) s += Bu[i] * Bv[j] * z[i * nc + j]; return Math.abs(s - h); };
-        return { nc, cp, segs, maxErr: mx, normal: n, dist };
+        // [v1.11.2] proiezione "verticale" (lungo la normale media) di un punto sulla superficie: per portare gli spigoli di bordo sulla faccia
+        // [v1.11.2] proiezione lungo la normale media (provato Gauss-Newton sul punto più vicino: divergeva fuori dominio, scartato)
+        const proj = p => { const d = sub(p, pl.origin), u = dot(d, e1), v = dot(d, e2), Bu = basis(nc, Math.min(1, Math.max(0, (u - u0) / (u1 - u0)))), Bv = basis(nc, Math.min(1, Math.max(0, (v - v0) / (v1 - v0)))); let s = 0; for (let i = 0; i < nc; i++) if (Bu[i]) for (let j = 0; j < nc; j++) s += Bu[i] * Bv[j] * z[i * nc + j]; return add(pl.origin, add(add(mul(e1, u), mul(e2, v)), mul(n, s))); };
+        return { nc, cp, segs, maxErr: mx, normal: n, dist, proj };
       }
     }
     return null;
@@ -1513,13 +1519,15 @@
       ctrl = ctrl.slice(3, ctrl.length - 3);
       // dist: scarto di un punto dalla superficie ai suoi parametri (θ, z)
       const dist = p => { const [t_, z] = param(p); return len(sub(evalS(t_, z), p)); };   // [v1.6.0] prima: θ attorno all'asse fisso
-      return { nc: nu, nv, cp: ctrl, segs: nu, segsV: nv - 3, maxErr: mx, normal: a, dist, closedU: true, outward };
+      const proj = p => { const [t_, z] = param(p); return evalS(t_, z); };   // [v1.11.2]
+      return { nc: nu, nv, cp: ctrl, segs: nu, segsV: nv - 3, maxErr: mx, normal: a, dist, proj, closedU: true, outward };
     }
     return null;
   }
 
   // [v1.5.0] campi comuni di una regione B-spline (aperta o chiusa)
-  const bsFields = B => ({ nc: B.nc, nv: B.nv, cp: B.cp, segs: B.segs, segsV: B.segsV, closedU: B.closedU, outward: B.outward, err: B.maxErr, normal: B.normal, dist: B.dist });
+  // [2026-10-21 v1.11.2] aggiunto proj (prima: ... dist: B.dist })
+  const bsFields = B => ({ nc: B.nc, nv: B.nv, cp: B.cp, segs: B.segs, segsV: B.segsV, closedU: B.closedU, outward: B.outward, err: B.maxErr, normal: B.normal, dist: B.dist, proj: B.proj });
   const fitBSplineAny = (M, tris, tol) => fitBSpline(M, tris, tol) || fitBSplineClosed(M, tris, tol);
 
   // ---- Riparazione: chiude i buchi (anelli di bordo aperti) con ear clipping sul piano medio ----
@@ -2152,6 +2160,33 @@
     // --- geometria delle catene: LINE, CIRCLE o polilinea B-spline grado 1 ---
     const vtx = new Map();
     const vertexPoint = v => { if (!vtx.has(v)) vtx.set(v, E(`VERTEX_POINT('',${pt(M.P(v))})`)); return vtx.get(v); };
+    // [2026-10-21 v1.11.2] PROIEZIONE SULLE SUPERFICI (idea presa da SimpleCAD, addon FreeCAD MIT: "ogni bordo condiviso diventa una curva che
+    // sta su entrambe le superfici vicine"). Le polilinee della mesh stavano solo entro tol dalle superfici e, con triangoli lunghi, la corda
+    // si allontanava di millimetri: OpenCASCADE allargava la tolleranza dello spigolo e la faccia risultava non valida.
+    const projOn = (fi, p) => {
+      if (!fi || fi.faceted) return null;
+      const r = fi.region;
+      if (r.type === 'plane') return sub(p, mul(r.normal, dot(sub(p, r.origin), r.normal)));
+      if (r.type === 'cylinder') { const d = sub(p, r.origin), h = dot(d, r.axis), q = sub(d, mul(r.axis, h)), l = len(q); return l > 1e-12 ? add(r.origin, add(mul(r.axis, h), mul(q, r.radius / l))) : null; }
+      if (r.type === 'sphere') { const d = sub(p, r.center), l = len(d); return l > 1e-12 ? add(r.center, mul(d, r.radius / l)) : null; }
+      if (r.type === 'cone') { const d = sub(p, r.apex), h = dot(d, r.axis), q = sub(d, mul(r.axis, h)), l = len(q); if (l < 1e-12) return null; const g = add(mul(r.axis, Math.cos(r.alpha)), mul(q, Math.sin(r.alpha) / l)); return add(r.apex, mul(g, Math.max(0, dot(d, g)))); }
+      if (r.type === 'torus') { const d = sub(p, r.center), h = dot(d, r.axis), q = sub(d, mul(r.axis, h)), l = len(q); if (l < 1e-12) return null; const C = add(r.center, mul(q, r.R / l)), w = sub(p, C), lw = len(w); return lw > 1e-12 ? add(C, mul(w, r.r / lw)) : null; }
+      if (r.type === 'bspline' && r.proj) return r.proj(p);
+      return null;
+    };
+    const facesOf = e => [...new Set(M.ET[e].map(t => fid[t]))].map(f => faceInfo[f]);
+    // punto sul bordo tra le facce: intersezione (proiezioni alternate) se vicina, altrimenti metà strada tra le due proiezioni
+    const between = (fs, p) => {
+      if (fs.length === 1) return projOn(fs[0], p) || p;
+      const A = fs[0], B = fs[1], pa = projOn(A, p), pb = projOn(B, p); if (!pa || !pb) return p;
+      let q = mul(add(pa, pb), 0.5);
+      for (let it = 0; it < 30; it++) { const nq = projOn(A, projOn(B, q) || q) || q; if (len(sub(nq, q)) < 1e-6 * tol) { q = nq; break; } q = nq; }
+      const qb = projOn(B, q);
+      if (!(qb && len(sub(qb, q)) <= 0.05 * tol && len(sub(q, p)) <= 2 * tol)) q = mul(add(pa, pb), 0.5);
+      // si accetta lo spostamento solo se avvicina il punto a entrambe le superfici (altrimenti resta il punto della mesh)
+      const gap = x => Math.max(len(sub(projOn(A, x) || x, x)), len(sub(projOn(B, x) || x, x)));
+      return gap(q) < gap(p) ? q : p;
+    };
     const curvedRadii = e => M.ET[e].map(t => faceInfo[fid[t]].region).filter(r => r.type === 'cylinder' || r.type === 'sphere').map(r => r.radius);  // (coni gestiti sotto con ctrX/rX)
     const edgeStats = { line: 0, circle: 0, polyline: 0 };
     // [2026-10-21 v1.11.1] due catene con gli stessi estremi (faccia sottile tra due bordi quasi allineati) non devono diventare entrambe LINE:
@@ -2167,6 +2202,8 @@
         const d = norm(sub(pN, p0));
         let ok = len(sub(pN, p0)) > 0 && !(sharedEnds(ch) && pts.length > 2);   // [v1.11.1] vedi sharedEnds
         for (const p of pts) { const w = sub(p, p0); if (len(sub(w, mul(d, dot(w, d)))) > tol * 0.5) { ok = false; break; } }
+        // [2026-10-21 v1.11.2] la retta deve stare anche sulle superfici vicine (prima: LINE di 49 mm accanto a B-spline curve, tolleranza 4,9 mm)
+        if (ok) for (const fi of facesOf(ch.edges[0])) for (let k = 1; k < 8 && ok; k++) { const q = add(p0, mul(sub(pN, p0), k / 8)), pq = projOn(fi, q); if (pq && len(sub(pq, q)) > tol) ok = false; }
         if (ok) { curve = E(`LINE('',${pt(p0)},${E(`VECTOR('',${dir(d)},${stepNum(len(sub(pN, p0)))})`)})`); edgeStats.line++; }
       }
       // cerchio: punti complanari a raggio costante (≥4 punti o adiacente a faccia curva di pari raggio)
@@ -2230,8 +2267,26 @@
       }
       // fallback: polilinea come B-spline lineare
       if (!curve) {
-        const n = pts.length, mult = Array(n).fill(1); mult[0] = mult[n - 1] = 2;
-        curve = E(`B_SPLINE_CURVE_WITH_KNOTS('',1,(${pts.map(pt).join(',')}),.POLYLINE_FORM.,.F.,.F.,(${mult.join(',')}),(${[...Array(n).keys()].map(i => stepNum(i)).join(',')}),.UNSPECIFIED.)`);
+        // [2026-10-21 v1.11.2] polilinea portata sulle superfici vicine: segmenti lunghi suddivisi (≤ diag/150, max 32 pezzi) e punti interni
+        // spostati sul bordo tra le due facce (`between`); gli estremi restano (condivisi con le altre catene). Se una faccia vicina è
+        // sfaccettata (triangoli) la polilinea resta quella della mesh. prima: pts usati così com'erano
+        let P = pts;
+        const fs = facesOf(ch.edges[0]);
+        // Si suddividono solo i segmenti la cui corda si stacca da una faccia vicina di oltre tol/2 (triangoli lunghi su superfici curve):
+        // suddividere tutto accanto alle B-spline cambiava il volume letto da OpenCASCADE (vase +0,5%, scoop −2%).
+        // Lo spostamento sul bordo (`between`) solo tra superfici analitiche: accanto a una B-spline peggiorava (Plenum: 25 facce non valide contro 4).
+        if (fs.length <= 2 && fs.every(fi => projOn(fi, p0)) && !fs.some(fi => fi.region.closedU)) {   // B-spline chiuse escluse (vase: volume +0,5%)
+          const hmax = Math.max(M.diag / 150, 4 * tol), dev = q => Math.max(...fs.map(fi => len(sub(projOn(fi, q) || q, q))));
+          P = [pts[0]];
+          for (let i = 0; i + 1 < pts.length; i++) {
+            const L = len(sub(pts[i + 1], pts[i])), mid = mul(add(pts[i], pts[i + 1]), 0.5);
+            const k = dev(mid) > 0.5 * tol ? Math.min(32, Math.max(1, Math.ceil(L / hmax))) : 1;
+            for (let j = 1; j <= k; j++) P.push(add(pts[i], mul(sub(pts[i + 1], pts[i]), j / k)));
+          }
+          if (!fs.some(fi => fi.region.type === 'bspline')) P = P.map((p, i) => (i === 0 || i === P.length - 1) ? p : between(fs, p));
+        }
+        const n = P.length, mult = Array(n).fill(1); mult[0] = mult[n - 1] = 2;
+        curve = E(`B_SPLINE_CURVE_WITH_KNOTS('',1,(${P.map(pt).join(',')}),.POLYLINE_FORM.,.F.,.F.,(${mult.join(',')}),(${[...Array(n).keys()].map(i => stepNum(i)).join(',')}),.UNSPECIFIED.)`);
         edgeStats.polyline++;
       }
       ch.step = E(`EDGE_CURVE('',${v0},${v1},${curve},.T.)`);
