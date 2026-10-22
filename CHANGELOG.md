@@ -1,5 +1,11 @@
 # CHANGELOG — Mesh2STEP
-Versione documento: 1.13.1 — 2026-10-22 09:19
+Versione documento: 1.13.2 — 2026-10-22 11:17
+
+## 25. [1.13.2] — 2026-10-22 11:17 — Proiezione inversa sulle B-spline (opzionale, non attiva)
+- `fitBSpline` ora espone `uvNear(p)`: parametri (u, v) del punto della B-spline **più vicino** a p (Gauss-Newton sulle coordinate metriche della mappa di altezze, derivate per differenze finite, partenza dalla proiezione verticale, dominio rispettato). Prima si usava solo la proiezione verticale (`uvOf`).
+- Opzione di `exportSTEP`/`stepValidated`: `bsplinePcurves: 'near'` (con `true` resta la proiezione verticale). Predefinito: spento.
+- **Risultato sul Plenum (tol 0,01, STEP validato)**: verticale 3 778 facce con 1 non valida; **inversa 3 337 facce, valido**; senza PCURVE sulle B-spline (predefinito) **2 277 facce, valido**. La proiezione inversa migliora la verticale ma resta peggiore di non scrivere la PCURVE: per questo non è attiva. Campioni invariati (28/28 validi, tutti i test ok).
+- Ipotesi per il seguito: i vertici accanto alle B-spline stanno sulla mesh e non sulla superficie (scarto fino a tol); un vero rimedio richiede di portare i vertici condivisi sulla B-spline prima di scrivere le PCURVE, oppure PCURVE B-spline 2D approssimate sui punti proiettati.
 
 ## 24. [1.13.1] — 2026-10-22 09:19 — Trovata la causa delle facce «ritagliate male»
 - **Causa**: i bordi lunghi fatti di pochi punti erano scritti come una sola B-spline di grado 1 (polilinea). Lo STEP non conteneva la curva 2D della faccia (PCURVE), quindi OpenCASCADE la ricavava per approssimazione e **smussava gli angoli** del bordo. Sul Plenum un piano con bordo 3D di 1 199,9 mm² diventava una faccia di 1 427,9 mm² (volume −15%).

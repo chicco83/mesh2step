@@ -1,5 +1,5 @@
 # CLAUDE.md — Mesh2STEP
-Versione: 1.13.1 — 2026-10-22 09:19
+Versione: 1.13.2 — 2026-10-22 11:17
 <!-- [2026-10-06 14:10] versione precedente (2026-10-06 13:45, commit 61c8f81): solo regole di versioning,
      documenti, test, git e progetto. Ora anche stato, ambiente, mappa del codice, insidie e prossimi passi
      per riprendere il lavoro da Claude Code. Le regole precedenti sono riportate invariate qui sotto. -->
@@ -14,10 +14,10 @@ Replica clean-room di mesh2solid.thavision.com con le funzioni "Pro" gratis e va
 - Repo: `https://github.com/chicco83/mesh2step` — sito: `https://chicco83.github.io/mesh2step/` (Pages da `main` / root)
 - Copia locale dell'utente: `G:\Il mio Drive\CRISTIANO\VIBE CODING\mesh2step` (cartella Google Drive)
 
-## 2. Stato al 2026-10-22 09:19
+## 2. Stato al 2026-10-22 11:17
 | Voce | Stato |
 |---|---|
-| Versione | **1.13.1** (branch di lavoro `ccr-b99c727f-y1lwzj`; v1.13.0, v1.12.0 `d6c200b`) — CI e Pages da controllare |
+| Versione | **1.13.2** (branch di lavoro `ccr-b99c727f-y1lwzj`; v1.13.1 CI verde) — CI e Pages da controllare |
 | Sito Pages | ✅ online alla 1.4.0, provato il 2026-10-07: bolt_m6 (opzione filettatura→cilindro: 5 facce, 2 cilindri), PDF, toro (2 facce toroidali), service worker attivo, console pulita. Provati in locale (1.3.2–1.4.0): tema chiaro/scuro, selezione, unione/annulla, deviazione, riparazione, export STEP/STL/OBJ |
 | Test core + OpenCASCADE | 28 STEP tutti `valid=True` (`tests/known_invalid.txt` vuoto dalla 1.11.1) (20 + `noisy_plate`/`noisy_fillet`/`scoop` + 5 da `test_hole.js`: `plate_hole_{clearance,tap,thread,diameter}`, `countersink_tap`); `test_autotol.js`, `test_verify.js`, `test_hole.js`, `test_repair.js`, `test_pdf.js`, `test_selfint.js`, `test_devthr.js`, `test_selfrepair.js` ok (vedi §6) |
 | CI GitHub (`ci.yml`) | ✅ verde fino alla 1.13.1 (run 24); in precedenza sui push 1.5.0, 1.5.1 e 1.6.0 (test core, OpenCASCADE, riparazione, PDF, auto-intersezioni, deviazione filetti); dalla 1.7.0 anche `test_selfrepair.js` |
@@ -167,8 +167,9 @@ Tutti devono essere `valid=True`; `check_step.py` esce con codice 1 altrimenti.
 - **Timestamp**: usare l'ora reale (`Get-Date` / `date`), mai orari stimati.
 
 ## 8. Prossimi passi (in ordine di priorità)
-**PRIORITÀ**: causa delle facce mal ritagliate trovata (1.13.1: polilinee senza PCURVE → OCC approssima la pcurve e smussa gli angoli; ora catene di LINE con PCURVE accanto ai piani). Plenum validato: 2 277 facce (tol 0,01) / 1 933 (tol 0,02), volume −0,8/−0,9%. Restano a triangoli le regioni **B-spline accanto ad altre B-spline** e alcune sfere: servono PCURVE vere sulle B-spline (proiezione inversa nello spazio dei nodi; quella «verticale» `uvOf` dava anelli 2D non chiusi, opzione `bsplinePcurves`; riprovata il 2026-10-22 con la suddivisione 1.13.1: peggiora, 3 778 facce). Strumenti: `ShapeAnalysis_Wire(wire, face, prec)` (CheckGaps2d/3d), tolleranza degli spigoli letti (`BRep_Tool.Tolerance`), script `inv.py` descritto in CHANGELOG 24. Il volume OCC di uno shell non valido non è un buon indicatore.
+**PRIORITÀ**: causa delle facce mal ritagliate trovata (1.13.1: polilinee senza PCURVE → OCC approssima la pcurve e smussa gli angoli; ora catene di LINE con PCURVE accanto ai piani). Plenum validato: 2 277 facce (tol 0,01) / 1 933 (tol 0,02), volume −0,8/−0,9%. Restano a triangoli le regioni **B-spline accanto ad altre B-spline** e alcune sfere: servono PCURVE vere sulle B-spline (proiezione inversa nello spazio dei nodi; quella «verticale» `uvOf` dava anelli 2D non chiusi, opzione `bsplinePcurves`; riprovata il 2026-10-22: verticale 3 778 facce; proiezione inversa `'near'` (1.13.2) 3 337 facce; entrambe peggio del predefinito 2 277. Prossima idea: portare i vertici condivisi sulla B-spline prima delle PCURVE). Strumenti: `ShapeAnalysis_Wire(wire, face, prec)` (CheckGaps2d/3d), tolleranza degli spigoli letti (`BRep_Tool.Tolerance`), script `inv.py` descritto in CHANGELOG 24. Il volume OCC di uno shell non valido non è un buon indicatore.
 <!-- [2026-10-22 v1.13.1] priorità precedente: **PRIORITÀ**: con «STEP validato» (1.13.0) il Plenum è valido e il volume giusto, ma 3 669 facce: 25 regioni hanno facce valide ma **mal ritagliate** (area OCC ≠ area dei triangoli, bordi entro 0,1 mm). Trovare la causa (anelli/pcurve sui piani con archi, B-spline) per evitare il ripiego a triangoli. Script di confronto in CHANGELOG 23. Strada indicata: PCURVE esplicite nello STEP o ripiego per faccia ai triangoli. Strumenti: `BRepCheck_Face`, `ShapeAnalysis_Wire(wire, face, prec)`, tolleranza degli spigoli dopo la lettura (`BRep_Tool.Tolerance`). Il volume OCC di uno shell non valido non è un buon indicatore. SimpleCAD (https://github.com/igsova/SimpleCAD, MIT) è il riferimento per le idee (CONTEXT «Analisi di SimpleCAD»). -->
+Fatti il 2026-10-22 (v1.13.2): `uvNear`, proiezione inversa sulle B-spline (opzionale, spenta).
 Fatti il 2026-10-22 (v1.13.1): causa delle facce mal ritagliate (LINE + PCURVE), ripiego per triangolo singolo e regioni vicine.
 Fatti il 2026-10-21 (v1.11.0): stadio 4d-bis (patch B-spline per superfici libere), filettature ≥ 2,5 giri, auto-tolleranza più veloce.
 Fatti il 2026-10-21 (v1.10.0): tolleranza automatica + robustezza al rumore (piani/cilindri/tori/fusione). Idee non fatte, dall'analisi di Plasticity (PolySplines: patch NURBS G2 da mesh, solo tier Studio): patch B-spline per le zone freeform aperte con tolleranza maggiore; decimazione delle zone sfaccettate residue. «SymplCAD» non è stato trovato online (nome da confermare).

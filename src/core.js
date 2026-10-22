@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — core.js
- * Versione: 1.13.1 — 2026-10-22 09:19 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
+ * Versione: 1.13.2 — 2026-10-22 11:17 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
  * ---------------------------------------------------------------------------
  * Motore indipendente dalla UI (gira nel Web Worker del browser e in Node per i test).
  *   1. Parsing  : STL (binario/ASCII), OBJ, 3MF (zip letto a mano + DecompressionStream)
@@ -25,7 +25,8 @@
   // [2026-10-21 21:49 v1.12.0] const VERSION = '1.11.2';
   // [2026-10-21 22:59 v1.13.0] const VERSION = '1.12.0';
   // [2026-10-22 09:19 v1.13.1] const VERSION = '1.13.0';
-  const VERSION = '1.13.1';
+  // [2026-10-22 11:17 v1.13.2] const VERSION = '1.13.1';
+  const VERSION = '1.13.2';
 
   // ===================== Helper vettoriali (array [x,y,z]) =====================
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -1403,7 +1404,26 @@
         const proj = p => { const d = sub(p, pl.origin), u = dot(d, e1), v = dot(d, e2), Bu = basis(nc, Math.min(1, Math.max(0, (u - u0) / (u1 - u0)))), Bv = basis(nc, Math.min(1, Math.max(0, (v - v0) / (v1 - v0)))); let s = 0; for (let i = 0; i < nc; i++) if (Bu[i]) for (let j = 0; j < nc; j++) s += Bu[i] * Bv[j] * z[i * nc + j]; return add(pl.origin, add(add(mul(e1, u), mul(e2, v)), mul(n, s))); };
         // [v1.13.1] parametri (u, v) della superficie STEP (nodi 0…segs) di un punto: servono per scrivere le PCURVE dei bordi
         const uvOf = p => { const d = sub(p, pl.origin); return [segs * (dot(d, e1) - u0) / (u1 - u0), segs * (dot(d, e2) - v0) / (v1 - v0)]; };
-        return { nc, cp, segs, maxErr: mx, normal: n, dist, proj, uvOf };
+        // [2026-10-22 v1.13.2] proiezione inversa: parametri (u, v) del punto della superficie PIÙ VICINO a p (Gauss-Newton sulle coordinate
+        // metriche s,t della mappa di altezze h(s,t); si parte dalla proiezione verticale e si resta nel dominio). È la stessa definizione che
+        // usa OpenCASCADE per proiettare gli altri spigoli della faccia: così le due curve 2D coincidono ai vertici.
+        const hAt = (s, t) => { const Bu = basis(nc, Math.min(1, Math.max(0, (s - u0) / (u1 - u0)))), Bv = basis(nc, Math.min(1, Math.max(0, (t - v0) / (v1 - v0)))); let a = 0; for (let i = 0; i < nc; i++) if (Bu[i]) for (let j = 0; j < nc; j++) a += Bu[i] * Bv[j] * z[i * nc + j]; return a; };
+        const uvNear = p => {
+          const d = sub(p, pl.origin); let s = Math.min(u1, Math.max(u0, dot(d, e1))), t = Math.min(v1, Math.max(v0, dot(d, e2))), best = Infinity, bs = s, bt = t;
+          const h = 1e-4 * Math.max(u1 - u0, v1 - v0);
+          for (let it = 0; it < 12; it++) {
+            const h0 = hAt(s, t), hs = (hAt(s + h, t) - hAt(s - h, t)) / (2 * h), ht = (hAt(s, t + h) - hAt(s, t - h)) / (2 * h);
+            const r = sub(add(pl.origin, add(add(mul(e1, s), mul(e2, t)), mul(n, h0))), p), f = dot(r, r);
+            if (f < best) { best = f; bs = s; bt = t; } else break;
+            const a = (1 + hs * hs), b = hs * ht, c = (1 + ht * ht), g1 = dot(r, add(e1, mul(n, hs))), g2 = dot(r, add(e2, mul(n, ht))), det = a * c - b * b;
+            if (!(Math.abs(det) > 1e-12)) break;
+            const ds = -(c * g1 - b * g2) / det, dt = -(a * g2 - b * g1) / det;
+            s = Math.min(u1, Math.max(u0, s + ds)); t = Math.min(v1, Math.max(v0, t + dt));
+            if (Math.abs(ds) + Math.abs(dt) < 1e-9 * (u1 - u0)) { const r2 = sub(add(pl.origin, add(add(mul(e1, s), mul(e2, t)), mul(n, hAt(s, t)))), p), f2 = dot(r2, r2); if (f2 < best) { best = f2; bs = s; bt = t; } break; }
+          }
+          return [segs * (bs - u0) / (u1 - u0), segs * (bt - v0) / (v1 - v0)];
+        };
+        return { nc, cp, segs, maxErr: mx, normal: n, dist, proj, uvOf, uvNear };
       }
     }
     return null;
@@ -1537,7 +1557,7 @@
   // [v1.5.0] campi comuni di una regione B-spline (aperta o chiusa)
   // [2026-10-21 v1.11.2] aggiunto proj (prima: ... dist: B.dist })
   // [2026-10-21 v1.13.1] aggiunto uvOf (prima: ... dist: B.dist, proj: B.proj })
-  const bsFields = B => ({ nc: B.nc, nv: B.nv, cp: B.cp, segs: B.segs, segsV: B.segsV, closedU: B.closedU, outward: B.outward, err: B.maxErr, normal: B.normal, dist: B.dist, proj: B.proj, uvOf: B.uvOf });
+  const bsFields = B => ({ nc: B.nc, nv: B.nv, cp: B.cp, segs: B.segs, segsV: B.segsV, closedU: B.closedU, outward: B.outward, err: B.maxErr, normal: B.normal, dist: B.dist, proj: B.proj, uvOf: B.uvOf, uvNear: B.uvNear });
   const fitBSplineAny = (M, tris, tol) => fitBSpline(M, tris, tol) || fitBSplineClosed(M, tris, tol);
 
   // ---- Riparazione: chiude i buchi (anelli di bordo aperti) con ear clipping sul piano medio ----
@@ -2250,7 +2270,7 @@
         surf = E(`B_SPLINE_SURFACE_WITH_KNOTS('',3,3,(${rows}),.UNSPECIFIED.,${r.closedU ? '.T.' : '.F.'},.F.,.F.,(${U.m}),(${Vk.m}),(${U.k}),(${Vk.k}),.UNSPECIFIED.)`);
         // [v1.13.1] provato: PCURVE anche sulle B-spline (parametri da proiezione «verticale»): OpenCASCADE proietta gli altri spigoli della
         // stessa faccia (archi) al punto più vicino e i due metodi non coincidono ai vertici → anelli 2D aperti, 28 facce non valide. Solo piani.
-        if (r.closedU) sense = r.outward ? '.T.' : '.F.'; else if (r.uvOf && opts.bsplinePcurves) uv = r.uvOf;
+        if (r.closedU) sense = r.outward ? '.T.' : '.F.'; else if (r.uvOf && opts.bsplinePcurves) uv = (opts.bsplinePcurves === 'near' && r.uvNear) ? r.uvNear : r.uvOf;
       }
       else if (r.type === 'freeform') { const t = fi.tris[0], n = [M.N[3 * t], M.N[3 * t + 1], M.N[3 * t + 2]]; surf = E(`PLANE('',${place(M.P(M.T[3 * t]), n, perp(n))})`); uv = planeUV(M.P(M.T[3 * t]), n); }
       else if (r.type === 'cylinder') { surf = E(`CYLINDRICAL_SURFACE('',${place(r.origin, r.axis, perp(r.axis))},${stepNum(r.radius)})`); sense = r.outward ? '.T.' : '.F.'; }
