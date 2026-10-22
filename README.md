@@ -1,5 +1,5 @@
 # Mesh2STEP
-Versione: 1.13.0 — 2026-10-21 22:59
+Versione: 1.13.1 — 2026-10-22 09:19
 <!-- [2026-10-06 13:45] Versione precedente 1.0.1 (2026-10-06 13:10): README delle funzioni v1.0
      (piani, cilindri, sfere); aggiornato con tutte le funzioni v1.1–v1.3. -->
 
@@ -100,7 +100,8 @@ raggi di toro, cilindri coassiali sulla stessa retta — ogni modifica solo se l
 | Formato | Dettagli |
 |---|---|
 | **STEP AP214** | `PLANE`, `CYLINDRICAL_SURFACE`, `CONICAL_SURFACE`, `SPHERICAL_SURFACE`, `TOROIDAL_SURFACE`, `B_SPLINE_SURFACE_WITH_KNOTS`; spigoli `LINE`, `CIRCLE` (coerenti con cilindri/coni), B-spline lineari; un `MANIFOLD_SOLID_BREP` per corpo con il suo nome; mesh aperte come superficie; facce nominate `HOLE D…`, `SHAFT D…`, `THREAD M…` |
-| **STEP validato (OpenCASCADE)** | Controllo B-rep vero nel browser (OpenCASCADE in WebAssembly, caricato su richiesta) e ripiego a triangoli delle sole regioni con facce non valide o mal ritagliate, finché lo STEP è valido |
+| **STEP validato (OpenCASCADE)** | Controllo B-rep vero nel browser (OpenCASCADE in WebAssembly, caricato su richiesta) e ripiego a triangoli delle sole regioni con facce non valide o mal ritagliate, finché lo STEP è valido (1.13.1: anche triangolo per triangolo e regioni vicine) |
+| **Bordi con PCURVE** | Dalla 1.13.1 i bordi accanto ai piani sono catene di rette con la curva 2D esplicita (PCURVE): i CAD non devono più approssimarla e le facce piane non vengono ritagliate male |
 | **Verifica STEP** | Pulsante che controlla lo STEP generato senza scaricarlo: intestazione, riferimenti, anelli chiusi, spigoli accoppiati nei gusci chiusi; avviso per i bordi aperti (controllo leggero, non sostituisce OpenCASCADE) |
 | **STL** | Binario, anche della mesh riparata |
 | **OBJ** | Un gruppo per faccia riconosciuta |

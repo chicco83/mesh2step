@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — core.js
- * Versione: 1.13.0 — 2026-10-21 22:59 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
+ * Versione: 1.13.1 — 2026-10-22 09:19 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
  * ---------------------------------------------------------------------------
  * Motore indipendente dalla UI (gira nel Web Worker del browser e in Node per i test).
  *   1. Parsing  : STL (binario/ASCII), OBJ, 3MF (zip letto a mano + DecompressionStream)
@@ -24,7 +24,8 @@
   // [2026-10-21 20:51 v1.11.2] const VERSION = '1.11.1';
   // [2026-10-21 21:49 v1.12.0] const VERSION = '1.11.2';
   // [2026-10-21 22:59 v1.13.0] const VERSION = '1.12.0';
-  const VERSION = '1.13.0';
+  // [2026-10-22 09:19 v1.13.1] const VERSION = '1.13.0';
+  const VERSION = '1.13.1';
 
   // ===================== Helper vettoriali (array [x,y,z]) =====================
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -813,7 +814,11 @@
           }
         }
       }
-      regions.push({ id, type: 'plane', tris: reg, normal: n, origin: [M.C[3 * s], M.C[3 * s + 1], M.C[3 * s + 2]] });
+      // [2026-10-21 v1.13.1] prima: origin = baricentro del triangolo seme (con la normale rifittata il piano poteva stare fino a tol dai vertici,
+      // sempre dallo stesso lato: errore sistematico di volume, es. 110 mm³ su un piano di 1 153 mm² del Plenum). Ora il piano ai minimi quadrati.
+      let porg = [M.C[3 * s], M.C[3 * s + 1], M.C[3 * s + 2]];
+      if (reg.length > 1) { const plf = fitPlane(verticesOf(M, reg)); if (Math.abs(dot(plf.normal, n)) > 0.999) porg = plf.origin; }
+      regions.push({ id, type: 'plane', tris: reg, normal: n, origin: porg });
     }
 
     // ---- 4c. FREEFORM: piani da 1-2 triangoli immersi in zone morbide ----
@@ -1396,7 +1401,9 @@
         // [v1.11.2] proiezione "verticale" (lungo la normale media) di un punto sulla superficie: per portare gli spigoli di bordo sulla faccia
         // [v1.11.2] proiezione lungo la normale media (provato Gauss-Newton sul punto più vicino: divergeva fuori dominio, scartato)
         const proj = p => { const d = sub(p, pl.origin), u = dot(d, e1), v = dot(d, e2), Bu = basis(nc, Math.min(1, Math.max(0, (u - u0) / (u1 - u0)))), Bv = basis(nc, Math.min(1, Math.max(0, (v - v0) / (v1 - v0)))); let s = 0; for (let i = 0; i < nc; i++) if (Bu[i]) for (let j = 0; j < nc; j++) s += Bu[i] * Bv[j] * z[i * nc + j]; return add(pl.origin, add(add(mul(e1, u), mul(e2, v)), mul(n, s))); };
-        return { nc, cp, segs, maxErr: mx, normal: n, dist, proj };
+        // [v1.13.1] parametri (u, v) della superficie STEP (nodi 0…segs) di un punto: servono per scrivere le PCURVE dei bordi
+        const uvOf = p => { const d = sub(p, pl.origin); return [segs * (dot(d, e1) - u0) / (u1 - u0), segs * (dot(d, e2) - v0) / (v1 - v0)]; };
+        return { nc, cp, segs, maxErr: mx, normal: n, dist, proj, uvOf };
       }
     }
     return null;
@@ -1529,7 +1536,8 @@
 
   // [v1.5.0] campi comuni di una regione B-spline (aperta o chiusa)
   // [2026-10-21 v1.11.2] aggiunto proj (prima: ... dist: B.dist })
-  const bsFields = B => ({ nc: B.nc, nv: B.nv, cp: B.cp, segs: B.segs, segsV: B.segsV, closedU: B.closedU, outward: B.outward, err: B.maxErr, normal: B.normal, dist: B.dist, proj: B.proj });
+  // [2026-10-21 v1.13.1] aggiunto uvOf (prima: ... dist: B.dist, proj: B.proj })
+  const bsFields = B => ({ nc: B.nc, nv: B.nv, cp: B.cp, segs: B.segs, segsV: B.segsV, closedU: B.closedU, outward: B.outward, err: B.maxErr, normal: B.normal, dist: B.dist, proj: B.proj, uvOf: B.uvOf });
   const fitBSplineAny = (M, tris, tol) => fitBSpline(M, tris, tol) || fitBSplineClosed(M, tris, tol);
 
   // ---- Riparazione: chiude i buchi (anelli di bordo aperti) con ear clipping sul piano medio ----
@@ -2127,7 +2135,10 @@
       // (triangoli degeneri, senza area) si uniscono alla faccia oltre il loro lato lungo (come «settle_slivers» di SimpleCAD): una scheggia
       // da sola era una faccia non valida per OpenCASCADE.
       // prima: if (faceted) for (const t of tris) { fid[t] = nF++; faceInfo.push({ region: r, tris: [t], faceted: true }); }
-      if (faceted) {
+      // [2026-10-22 v1.13.1] r.singleTris (messo da facetRegionsAt quando una faccia unita resta non valida): un triangolo per faccia,
+      // senza unione dei complanari (Plenum, tolleranza 0,02: un gruppo complanare da 117,9 mm² restava non valido e lo STEP finale pure).
+      if (faceted && r.singleTris) for (const t of tris) { fid[t] = nF++; faceInfo.push({ region: r, tris: [t], faceted: true, rep: t }); }
+      else if (faceted) {
         const inR = new Set(tris), grp = new Map(), isSl = t => { const a = M.P(M.T[3 * t]), b = M.P(M.T[3 * t + 1]), c = M.P(M.T[3 * t + 2]), lo = Math.max(len(sub(b, a)), len(sub(c, b)), len(sub(a, c))); return 2 * M.A[t] < Math.max(1e-3 * lo, 1e-6 * M.diag) * lo; };
         const nrm = t => [M.N[3 * t], M.N[3 * t + 1], M.N[3 * t + 2]], coplanar = (t, u) => { if (dot(nrm(t), nrm(u)) < Math.cos(1e-3)) return false; const o = M.P(M.T[3 * t]), n = nrm(t); for (let k = 0; k < 3; k++) if (Math.abs(dot(sub(M.P(M.T[3 * u + k]), o), n)) > 1e-7 * M.diag) return false; return true; };
         const groups = [];
@@ -2210,12 +2221,65 @@
       // e la faccia piana vicina, valida per OpenCASCADE, aveva un'area del 20% diversa da quella dei suoi triangoli
       return gap(q) < gap(p) && len(sub(q, p)) <= 2 * tol ? q : p;
     };
+    // [2026-10-21 v1.13.1] superficie di una faccia (memorizzata) e funzione dei parametri (u, v) per le PCURVE: piani (anche sfaccettati) e
+    // B-spline aperte; per cilindri/coni/sfere/tori/B-spline chiuse uv = null (OpenCASCADE proietta in modo esatto sulle analitiche).
+    const planeUV = (o, n) => { const x = perp(n), y = cross(n, x); return p => { const d = sub(p, o); return [dot(d, x), dot(d, y)]; }; };
+    const surfMemo = new Map();
+    const surfOf = fi => {
+      if (surfMemo.has(fi)) return surfMemo.get(fi);
+      let surf, sense = '.T.', uv = null; const r = fi.region;
+      // [v1.13.0] prima: t = fi.tris[0] (con le facce di più triangoli serve il triangolo più grande: le schegge hanno normale casuale)
+      if (fi.faceted) { const t = fi.rep != null ? fi.rep : fi.tris[0], n = [M.N[3 * t], M.N[3 * t + 1], M.N[3 * t + 2]]; surf = E(`PLANE('',${place(M.P(M.T[3 * t]), n, perp(n))})`); uv = planeUV(M.P(M.T[3 * t]), n); }
+      else if (r.type === 'plane') { surf = E(`PLANE('',${place(r.origin, r.normal, perp(r.normal))})`); uv = planeUV(r.origin, r.normal); }
+      else if (r.type === 'cone') {   // [v1.1.0] posizione alla quota minima, raggio = h·tanα
+        const h0 = Math.max(0, r.hmin);
+        surf = E(`CONICAL_SURFACE('',${place(add(r.apex, mul(r.axis, h0)), r.axis, perp(r.axis))},${stepNum(h0 * Math.tan(r.alpha))},${stepNum(r.alpha, 12)})`); sense = r.outward ? '.T.' : '.F.';
+      } else if (r.type === 'torus') {
+        surf = E(`TOROIDAL_SURFACE('',${place(r.center, r.axis, perp(r.axis))},${stepNum(r.R)},${stepNum(r.r)})`); sense = r.outward ? '.T.' : '.F.';
+      } else if (r.type === 'bspline') {
+        const rows = r.cp.map(row => '(' + row.map(pt).join(',') + ')').join(',');
+        // [v1.5.0] superficie chiusa in u (B-spline bloccata con prima e ultima riga coincidenti): nodi v propri (segsV), U_CLOSED vero
+        const sv = r.closedU ? r.segsV : r.segs;
+        const mult = [4, ...Array(r.segs - 1).fill(1), 4].join(','), kn = [...Array(r.segs + 1).keys()].map(i => stepNum(i)).join(',');
+        const multV = [4, ...Array(sv - 1).fill(1), 4].join(','), knV = [...Array(sv + 1).keys()].map(i => stepNum(i)).join(',');
+        // [v1.12.0] superfici del port SimpleCAD: nodi non uniformi (r.ub / r.vb = punti di rottura)
+        const U = r.ub ? { m: [4, ...Array(r.ub.length - 2).fill(1), 4].join(','), k: r.ub.map(x => stepNum(x)).join(',') } : { m: mult, k: kn };
+        const Vk = r.vb ? { m: [4, ...Array(r.vb.length - 2).fill(1), 4].join(','), k: r.vb.map(x => stepNum(x)).join(',') } : { m: multV, k: knV };
+        // [v1.5.0] prima: ...,.UNSPECIFIED.,.F.,.F.,.F.,(${mult}),(${mult}),(${kn}),(${kn}),.UNSPECIFIED.) con gli stessi nodi in u e v
+        // [v1.12.0] prima: ...,(${mult}),(${multV}),(${kn}),(${knV}),...
+        surf = E(`B_SPLINE_SURFACE_WITH_KNOTS('',3,3,(${rows}),.UNSPECIFIED.,${r.closedU ? '.T.' : '.F.'},.F.,.F.,(${U.m}),(${Vk.m}),(${U.k}),(${Vk.k}),.UNSPECIFIED.)`);
+        // [v1.13.1] provato: PCURVE anche sulle B-spline (parametri da proiezione «verticale»): OpenCASCADE proietta gli altri spigoli della
+        // stessa faccia (archi) al punto più vicino e i due metodi non coincidono ai vertici → anelli 2D aperti, 28 facce non valide. Solo piani.
+        if (r.closedU) sense = r.outward ? '.T.' : '.F.'; else if (r.uvOf && opts.bsplinePcurves) uv = r.uvOf;
+      }
+      else if (r.type === 'freeform') { const t = fi.tris[0], n = [M.N[3 * t], M.N[3 * t + 1], M.N[3 * t + 2]]; surf = E(`PLANE('',${place(M.P(M.T[3 * t]), n, perp(n))})`); uv = planeUV(M.P(M.T[3 * t]), n); }
+      else if (r.type === 'cylinder') { surf = E(`CYLINDRICAL_SURFACE('',${place(r.origin, r.axis, perp(r.axis))},${stepNum(r.radius)})`); sense = r.outward ? '.T.' : '.F.'; }
+      else if (r.type === 'sphere') { surf = E(`SPHERICAL_SURFACE('',${place(r.center, [0, 0, 1], [1, 0, 0])},${stepNum(r.radius)})`); sense = r.outward ? '.T.' : '.F.'; }
+      const res = { id: surf, sense, uv }; surfMemo.set(fi, res); return res;
+    };
     const curvedRadii = e => M.ET[e].map(t => faceInfo[fid[t]].region).filter(r => r.type === 'cylinder' || r.type === 'sphere').map(r => r.radius);  // (coni gestiti sotto con ctrX/rX)
     const edgeStats = { line: 0, circle: 0, polyline: 0 };
     // [2026-10-21 v1.11.1] due catene con gli stessi estremi (faccia sottile tra due bordi quasi allineati) non devono diventare entrambe LINE:
     // la faccia avrebbe due spigoli coincidenti e area nulla (OpenCASCADE: faccia non valida). Restano polilinee.
     const pairN = new Map(); for (const ch of chains) if (!ch.closed) { const a = ch.verts[0], b = ch.verts[ch.verts.length - 1], k = a < b ? a + ',' + b : b + ',' + a; pairN.set(k, (pairN.get(k) || 0) + 1); }
     const sharedEnds = ch => { const a = ch.verts[0], b = ch.verts[ch.verts.length - 1]; return (pairN.get(a < b ? a + ',' + b : b + ',' + a) || 0) > 1; };
+    // [2026-10-21 v1.13.1] CURVE 2D ESPLICITE (PCURVE): una retta 3D tra due punti diventa SURFACE_CURVE con, per ogni faccia vicina che ha
+    // parametri noti (piani, B-spline aperte), la retta corrispondente nel piano dei parametri. Così OpenCASCADE non deve ricavarle per
+    // approssimazione (causa delle facce valide ma ritagliate male: area diversa dai triangoli, volume −3…−15%).
+    let ctx2d = null;
+    const lineWithPcurves = (a, b, fs) => {
+      const d = sub(b, a), L = len(d), l3 = E(`LINE('',${pt(a)},${E(`VECTOR('',${dir(mul(d, 1 / L))},${stepNum(L)})`)})`);
+      if (opts.pcurves === false) return l3;
+      const pcs = [];
+      for (const fi of fs) {
+        const S = surfOf(fi); if (!S.uv) continue;
+        const ua = S.uv(a), ub = S.uv(b), du = ub[0] - ua[0], dv = ub[1] - ua[1], l2 = Math.hypot(du, dv); if (!(l2 > 1e-14)) continue;
+        if (!ctx2d) ctx2d = E("(GEOMETRIC_REPRESENTATION_CONTEXT(2)PARAMETRIC_REPRESENTATION_CONTEXT()REPRESENTATION_CONTEXT('2D SPACE',''))");
+        const l2d = E(`LINE('',${E(`CARTESIAN_POINT('',(${stepNum(ua[0])},${stepNum(ua[1])}))`)},${E(`VECTOR('',${E(`DIRECTION('',(${stepNum(du / l2, 12)},${stepNum(dv / l2, 12)}))`)},${stepNum(l2)})`)})`);
+        pcs.push(E(`PCURVE('',${S.id},${E(`DEFINITIONAL_REPRESENTATION('',(${l2d}),${ctx2d})`)})`));
+      }
+      return pcs.length ? E(`SURFACE_CURVE('',${l3},(${pcs.join(',')}),.CURVE_3D.)`) : l3;
+    };
     chains.forEach(ch => {
       const pts = ch.verts.map(v => M.P(v)), p0 = pts[0], pN = pts[pts.length - 1];
       const v0 = vertexPoint(ch.verts[0]), v1 = vertexPoint(ch.verts[ch.verts.length - 1]);
@@ -2227,7 +2291,7 @@
         for (const p of pts) { const w = sub(p, p0); if (len(sub(w, mul(d, dot(w, d)))) > tol * 0.5) { ok = false; break; } }
         // [2026-10-21 v1.11.2] la retta deve stare anche sulle superfici vicine (prima: LINE di 49 mm accanto a B-spline curve, tolleranza 4,9 mm)
         if (ok) for (const fi of facesOf(ch.edges[0])) for (let k = 1; k < 8 && ok; k++) { const q = add(p0, mul(sub(pN, p0), k / 8)), pq = projOn(fi, q); if (pq && len(sub(pq, q)) > tol) ok = false; }
-        if (ok) { curve = E(`LINE('',${pt(p0)},${E(`VECTOR('',${dir(d)},${stepNum(len(sub(pN, p0)))})`)})`); edgeStats.line++; }
+        if (ok) { curve = lineWithPcurves(p0, pN, facesOf(ch.edges[0])); edgeStats.line++; }   // [v1.13.1] con PCURVE
       }
       // cerchio: punti complanari a raggio costante (≥4 punti o adiacente a faccia curva di pari raggio)
       if (!curve && pts.length >= 3) {
@@ -2309,6 +2373,36 @@
           }
           if (!fs.some(fi => fi.region.type === 'bspline')) P = P.map((p, i) => (i === 0 || i === P.length - 1) ? p : between(fs, p));
         }
+        // [2026-10-21 v1.13.1] CAUSA DELLE FACCE «RITAGLIATE MALE»: una polilinea lunga come B-spline di grado 1 costringe il lettore STEP a
+        // ricavare la curva 2D sulla faccia (pcurve) per approssimazione, che smussa gli angoli: sul file Plenum un piano con bordo 3D di
+        // 1 199,9 mm² diventava una faccia di 1 427,9 mm² (volume −15%). Ora la polilinea diventa una catena di spigoli rettilinei (LINE),
+        // con vertici intermedi condivisi dalle due facce: la proiezione di una retta è esatta. Prima: un solo EDGE_CURVE su B_SPLINE_CURVE
+        // di grado 1 (resta per le catene di 2 punti, che sono già una retta, e se opts.polylineEdges === true).
+        // Solo se una faccia vicina è un piano (lì l'errore della pcurve era grande e la PCURVE esplicita è esatta): tra due superfici curve
+        // le tante rette corte facevano proiettare a OpenCASCADE anelli 2D non chiusi (scoop: 6 facce B-spline non valide) → resta la polilinea.
+        /* [2026-10-22 v1.13.1] variante provata e scartata: suddividere anche se i segmenti sono lunghi (media > diag/50 o diag/200).
+           Plenum validato 2 984 facce invece di 3 034, ma scoop.step diventava non valido (facce B-spline NotClosed).
+        let Ltot = 0; for (let i = 0; i + 1 < P.length; i++) Ltot += len(sub(P[i + 1], P[i]));
+        const longSegs = Ltot / Math.max(1, P.length - 1) > M.diag / 50;
+        if (opts.polylineEdges !== true && P.length > 2 && (planeSide || longSegs)) { */
+        const planeSide = fs.some(fi => fi.faceted || fi.region.type === 'plane' || fi.region.type === 'freeform');
+        if (opts.polylineEdges !== true && P.length > 2 && planeSide) {
+          // [2026-10-22 v1.13.1] punti intermedi più vicini di tol/4 al precedente (o all'ultimo) tolti: un segmento di ~0,002 mm diventava per
+          // OpenCASCADE uno spigolo chiuso su un solo vertice (Plenum a tolleranza 0,02: anello aperto, ultima faccia non valida)
+          { const dmin = 0.25 * tol, Q = [P[0]];
+            for (let i = 1; i < P.length - 1; i++) if (len(sub(P[i], Q[Q.length - 1])) > dmin && len(sub(P[i], P[P.length - 1])) > dmin) Q.push(P[i]);
+            Q.push(P[P.length - 1]); P = Q; }
+        }
+        if (opts.polylineEdges !== true && P.length > 2 && planeSide) {
+          const vs = P.map((p, i) => i === 0 ? v0 : i === P.length - 1 ? v1 : E(`VERTEX_POINT('',${pt(p)})`));
+          ch.steps = [];
+          for (let i = 0; i + 1 < P.length; i++) {
+            const d = sub(P[i + 1], P[i]), L = len(d); if (L < 1e-12) continue;
+            ch.steps.push(E(`EDGE_CURVE('',${vs[i]},${vs[i + 1]},${lineWithPcurves(P[i], P[i + 1], fs)},.T.)`));
+          }
+          edgeStats.polyline++;
+          return;
+        }
         const n = P.length, mult = Array(n).fill(1); mult[0] = mult[n - 1] = 2;
         curve = E(`B_SPLINE_CURVE_WITH_KNOTS('',1,(${P.map(pt).join(',')}),.POLYLINE_FORM.,.F.,.F.,(${mult.join(',')}),(${[...Array(n).keys()].map(i => stepNum(i)).join(',')}),.UNSPECIFIED.)`);
         edgeStats.polyline++;
@@ -2368,7 +2462,9 @@
         const oe = [];
         for (let i = 0; i < L.length;) {
           const [a, , e] = L[i], ch = chains[chainOf[e]], j = ch.edges.indexOf(e), fwd = ch.verts[j] === a;
-          oe.push(E(`ORIENTED_EDGE('',*,*,${ch.step},${fwd ? '.T.' : '.F.'})`));
+          // [v1.13.1] catena spezzata in rette: gli spigoli in ordine (o al contrario se la catena è percorsa all'indietro)
+          if (ch.steps) for (const st of (fwd ? ch.steps : ch.steps.slice().reverse())) oe.push(E(`ORIENTED_EDGE('',*,*,${st},${fwd ? '.T.' : '.F.'})`));
+          else oe.push(E(`ORIENTED_EDGE('',*,*,${ch.step},${fwd ? '.T.' : '.F.'})`));
           i += ch.edges.length;
         }
         // area proiettata (per scegliere il bordo esterno delle facce piane)
@@ -2384,32 +2480,9 @@
       let outer = -1; if ((r.type === 'plane' || (r.type === 'bspline' && r.normal && !r.closedU) || (fi.faceted && fi.tris.length > 1)) && bounds.length) outer = bounds.reduce((bi, b, i) => (b.ar > bounds[bi].ar ? i : bi), 0);
       else if (bounds.length > 1) outer = bounds.reduce((bi, b, i) => (b.per > bounds[bi].per ? i : bi), 0);
       const fb = bounds.map((b, i) => E(`${i === outer ? 'FACE_OUTER_BOUND' : 'FACE_BOUND'}('',${b.loop},.T.)`));
-      let surf, sense = '.T.', fname = '';
-      // [v1.13.0] prima: t = fi.tris[0] (con le facce di più triangoli serve il triangolo più grande: le schegge hanno normale casuale)
-      if (fi.faceted) { const t = fi.rep != null ? fi.rep : fi.tris[0], n = [M.N[3 * t], M.N[3 * t + 1], M.N[3 * t + 2]]; surf = E(`PLANE('',${place(M.P(M.T[3 * t]), n, perp(n))})`); if (r.type === 'thread') fname = 'THREAD ' + r.label; }
-      else if (r.type === 'plane') surf = E(`PLANE('',${place(r.origin, r.normal, perp(r.normal))})`);
-      else if (r.type === 'cone') {   // [v1.1.0] posizione alla quota minima, raggio = h·tanα
-        const h0 = Math.max(0, r.hmin);
-        surf = E(`CONICAL_SURFACE('',${place(add(r.apex, mul(r.axis, h0)), r.axis, perp(r.axis))},${stepNum(h0 * Math.tan(r.alpha))},${stepNum(r.alpha, 12)})`); sense = r.outward ? '.T.' : '.F.';
-      } else if (r.type === 'torus') {
-        surf = E(`TOROIDAL_SURFACE('',${place(r.center, r.axis, perp(r.axis))},${stepNum(r.R)},${stepNum(r.r)})`); sense = r.outward ? '.T.' : '.F.';
-      } else if (r.type === 'bspline') {
-        const rows = r.cp.map(row => '(' + row.map(pt).join(',') + ')').join(',');
-        // [v1.5.0] superficie chiusa in u (B-spline bloccata con prima e ultima riga coincidenti): nodi v propri (segsV), U_CLOSED vero
-        const sv = r.closedU ? r.segsV : r.segs;
-        const mult = [4, ...Array(r.segs - 1).fill(1), 4].join(','), kn = [...Array(r.segs + 1).keys()].map(i => stepNum(i)).join(',');
-        const multV = [4, ...Array(sv - 1).fill(1), 4].join(','), knV = [...Array(sv + 1).keys()].map(i => stepNum(i)).join(',');
-        // [v1.12.0] superfici del port SimpleCAD: nodi non uniformi (r.ub / r.vb = punti di rottura)
-        const U = r.ub ? { m: [4, ...Array(r.ub.length - 2).fill(1), 4].join(','), k: r.ub.map(x => stepNum(x)).join(',') } : { m: mult, k: kn };
-        const Vk = r.vb ? { m: [4, ...Array(r.vb.length - 2).fill(1), 4].join(','), k: r.vb.map(x => stepNum(x)).join(',') } : { m: multV, k: knV };
-        // [v1.5.0] prima: ...,.UNSPECIFIED.,.F.,.F.,.F.,(${mult}),(${mult}),(${kn}),(${kn}),.UNSPECIFIED.) con gli stessi nodi in u e v
-        // [v1.12.0] prima: ...,(${mult}),(${multV}),(${kn}),(${knV}),...
-        surf = E(`B_SPLINE_SURFACE_WITH_KNOTS('',3,3,(${rows}),.UNSPECIFIED.,${r.closedU ? '.T.' : '.F.'},.F.,.F.,(${U.m}),(${Vk.m}),(${U.k}),(${Vk.k}),.UNSPECIFIED.)`);
-        if (r.closedU) sense = r.outward ? '.T.' : '.F.';
-      }
-      else if (r.type === 'freeform') { const t = fi.tris[0], n = [M.N[3 * t], M.N[3 * t + 1], M.N[3 * t + 2]]; surf = E(`PLANE('',${place(M.P(M.T[3 * t]), n, perp(n))})`); }
-      else if (r.type === 'cylinder') { surf = E(`CYLINDRICAL_SURFACE('',${place(r.origin, r.axis, perp(r.axis))},${stepNum(r.radius)})`); sense = r.outward ? '.T.' : '.F.'; }
-      else if (r.type === 'sphere') { surf = E(`SPHERICAL_SURFACE('',${place(r.center, [0, 0, 1], [1, 0, 0])},${stepNum(r.radius)})`); sense = r.outward ? '.T.' : '.F.'; }
+      // [2026-10-21 v1.13.1] superficie creata da surfOf (anche le PCURVE dei bordi la richiamano); prima il codice era qui
+      let fname = ''; const SF = surfOf(fi), surf = SF.id, sense = SF.sense;
+      if (fi.faceted && r.type === 'thread') fname = 'THREAD ' + r.label;
       if (!fi.faceted && r.type === 'cylinder') fname = r.threadLabel ? 'THREAD ' + r.threadLabel : (r.outward ? 'SHAFT D' : 'HOLE D') + (2 * r.radius).toFixed(3);
       const af = E(`ADVANCED_FACE(${stepStr(fname)},(${fb.join(',')}),${surf},${sense})`);
       // [2026-10-06] versione precedente: const af = E(`ADVANCED_FACE('',(${fb.join(',')}),${surf},${sense})`);
@@ -2676,7 +2749,7 @@
     const cp = gu.map((u, i) => gv.map((v, j) => add(origin, add(add(mul(e1, u), mul(e2, v)), mul(e3, H[i * nv + j])))));
     return { kind: 'bspline', origin, e1, e2, e3, ub, vb, uk, vk, nu, nv, H, h, local, cp,
       dist: p => { const [s, t, z] = local(p); return Math.abs(h(s, t) - z); },
-      proj: p => { const [s, t] = local(p); return add(origin, add(add(mul(e1, s), mul(e2, t)), mul(e3, h(s, t)))); } };
+      proj: p => { const [s, t] = local(p); return add(origin, add(add(mul(e1, s), mul(e2, t)), mul(e3, h(s, t)))); }, uvOf: p => local(p).slice(0, 2) };
   }
   function scFit(F, tris0, tol, planeTol, around) {
     const M = F.M; let tris = tris0.filter(t => !F.sliver[t]); if (!tris.length) tris = tris0;
@@ -2841,7 +2914,7 @@
         const id = regions.length; let r;
         if (s.kind === 'plane') r = { type: 'plane', normal: s.normal, origin: s.origin, err: s.error || 0 };
         else if (s.kind === 'cylinder') r = { type: 'cylinder', axis: s.axis, origin: s.origin, radius: s.radius, height: s.height, outward: s.outward, err: s.error };
-        else if (s.kind === 'bspline') r = { type: 'bspline', cp: s.cp, nc: s.nu, nv: s.nv, segs: s.ub.length - 1, segsV: s.vb.length - 1, ub: s.ub, vb: s.vb, err: Math.max(s.error || 0, s.sampleError || 0), normal: s.e3, dist: s.dist, proj: s.proj, sc: true };
+        else if (s.kind === 'bspline') r = { type: 'bspline', cp: s.cp, nc: s.nu, nv: s.nv, segs: s.ub.length - 1, segsV: s.vb.length - 1, ub: s.ub, vb: s.vb, err: Math.max(s.error || 0, s.sampleError || 0), normal: s.e3, dist: s.dist, proj: s.proj, uvOf: s.uvOf, sc: true };
         else r = { type: 'freeform', err: 0 };
         if (r.type === 'plane' && tris.length <= 2 && s.kind === 'plane' && patches[pi].tris.length === 1) { /* triangolo singolo: resta piano (come in SimpleCAD) */ }
         r.id = id; r.tris = tris; regions.push(r); for (const t of tris) face[t] = id;
@@ -2874,13 +2947,16 @@
               else { const den = 1 / (va + vb + vc); q = add(a, add(mul(ab, vb * den), mul(ac, vc * den))); } } } } } }
     const d = sub(p, q); return dot(d, d);
   }
-  function regionOfFace(M, seg, pts, preferAnalytic) {
+  function regionOfFace(M, seg, pts, preferAnalytic, kind) {
+    // [v1.13.1] solo regioni il cui tipo può dare quella superficie (piano: piano o regione a triangoli)
+    const okType = r => !kind || kind === 'other' || (kind === 'plane' ? (r.type === 'plane' || r.type === 'freeform' || r.type === 'thread') : r.type === kind);
     const cnt = new Map();
     for (const p of pts) {
       // triangolo più vicino per distanza punto-triangolo (con il centro dei triangoli i triangoli grandi "rubavano" i punti ai vicini piccoli)
       let best = -1, bd = Infinity;
       for (let t = 0; t < M.nT; t++) {
         const dx = M.C[3 * t] - p[0], dy = M.C[3 * t + 1] - p[1], dz = M.C[3 * t + 2] - p[2], dc = dx * dx + dy * dy + dz * dz;
+        if (!okType(seg.regions[seg.face[t]])) continue;
         if (dc > 4 * bd + 1e-9 && dc > 1e-12 && bd < Infinity && Math.sqrt(dc) - Math.sqrt(M.A[t] * 2) > Math.sqrt(bd)) continue;   // scarto rapido
         const d = ptTriDist2(p, M.P(M.T[3 * t]), M.P(M.T[3 * t + 1]), M.P(M.T[3 * t + 2])); if (d < bd) { bd = d; best = t; }
       }
@@ -2894,32 +2970,52 @@
     return best;
   }
   function facetRegionsAt(M, seg, faces, tol) {
-    const ids = new Set(), area = new Map(); let invalid = 0, mismatch = 0;
+    const ids = new Set(), single = new Set(), area = new Map(); let invalid = 0, mismatch = 0;
     for (const f of faces) {
-      const id = regionOfFace(M, seg, f.pts, !f.valid); if (id < 0) continue;
+      const id = regionOfFace(M, seg, f.pts, !f.valid, f.kind); if (id < 0) continue;
       area.set(id, (area.get(id) || 0) + (f.area || 0));
       if (!f.valid && seg.regions[id].type !== 'freeform') { ids.add(id); invalid++; }
+      else if (!f.valid && !seg.regions[id].singleTris) { single.add(id); invalid++; }   // [2026-10-22 v1.13.1] faccia sfaccettata unita non valida
+      else if (!f.valid) {
+        // [2026-10-22 v1.13.1] faccia già di un solo triangolo e ancora non valida: il difetto viene dallo spigolo condiviso con una superficie vicina
+        // (Plenum a tolleranza 0,02: retta lunga 16 mm accanto a una B-spline, OpenCASCADE chiudeva l'anello con uno spigolo degenere) →
+        // si passano a triangoli le regioni analitiche adiacenti ai triangoli della faccia
+        for (const p of f.pts) {
+          let bt = -1, bd = Infinity;
+          for (const t of seg.regions[id].tris) { const d = ptTriDist2(p, M.P(M.T[3 * t]), M.P(M.T[3 * t + 1]), M.P(M.T[3 * t + 2])); if (d < bd) { bd = d; bt = t; } }
+          if (bt >= 0) for (let k = 0; k < 3; k++) { const u = M.nb[3 * bt + k]; if (u >= 0 && seg.regions[seg.face[u]].type !== 'freeform') ids.add(seg.face[u]); }
+        }
+        invalid++;
+      }
     }
+    // [2026-10-21 v1.13.1] confronto delle AREE (|area OCC − area dei triangoli| > 2%). Provato il confronto del contributo al volume
+    // (∫ x·n/3 dA): dipende dalla tessellazione OCC ed era più rumoroso (Plenum: −1,3% di volume finale contro −0,3%), scartato.
     for (const [id, a] of area) {
       const r = seg.regions[id]; if (r.type === 'freeform' || ids.has(id)) continue;
-      let am = 0, per = 0; for (const t of r.tris) am += M.A[t];
-      per = Math.sqrt(am) * 4;   // stima del perimetro per la tolleranza sull'area
+      let am = 0; for (const t of r.tris) am += M.A[t];
+      const per = Math.sqrt(am) * 4;   // stima del perimetro per la tolleranza sull'area
       if (Math.abs(a - am) > Math.max(0.02 * am, 2 * tol * per)) { ids.add(id); mismatch++; }
     }
+    /* [2026-10-22 v1.13.1] prima: solo le regioni analitiche passavano a triangoli; una faccia sfaccettata (gruppo complanare) non valida restava tale.
     const regions = seg.regions.map(r => (ids.has(r.id) && r.type !== 'freeform' && r.tris.length) ? Object.assign({}, r, { type: 'freeform', faceted: true, wasType: r.type }) : r);
-    return { seg: Object.assign({}, seg, { regions }), ids: [...ids], invalid, mismatch };
+    return { seg: Object.assign({}, seg, { regions }), ids: [...ids], invalid, mismatch }; */
+    const regions = seg.regions.map(r => (ids.has(r.id) && r.type !== 'freeform' && r.tris.length) ? Object.assign({}, r, { type: 'freeform', faceted: true, wasType: r.type })
+      : single.has(r.id) ? Object.assign({}, r, { singleTris: true }) : r);
+    for (const id of single) ids.add(id);
+    return { seg: Object.assign({}, seg, { regions }), ids: [...ids], invalid, mismatch, single: single.size };
   }
 
   // ---- [v1.13.0] Verifica e ripiego con OpenCASCADE (oc = modulo replicad-opencascadejs, iniettato come manifold: il core resta senza dipendenze)
   // occCheckStep: legge lo STEP con STEPControl_Reader, BRepCheck_Analyzer su forma e facce, volume, e per ogni faccia area, validità e
   // alcuni punti DENTRO la faccia (centri dei triangoli della sua tessellazione) per riconoscere la regione di origine.
-  function occCheckStep(oc, text) {
+  function occCheckStep(oc, text, opts = {}) {
     oc.FS.writeFile('/m2s_check.step', text);
     const rd = new oc.STEPControl_Reader();
     rd.ReadFile('/m2s_check.step');
     rd.TransferRoots(new oc.Message_ProgressRange());
     const sh = rd.OneShape();
-    new oc.BRepMesh_IncrementalMesh(sh, 0.5, false, 0.5, false);
+    // tessellazione grossolana: serve solo a prendere punti dentro le facce (provata 0,02 mm per il contributo al volume: scartato)
+    new oc.BRepMesh_IncrementalMesh(sh, opts.deflection || 0.5, false, 0.5, false);
     const az = new oc.BRepCheck_Analyzer(sh, true, false, false), faces = [];
     const ex = new oc.TopExp_Explorer(sh, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
     for (; ex.More(); ex.Next()) {
@@ -2927,7 +3023,8 @@
       const pts = [], T = oc.BRep_Tool.Triangulation(f, new oc.TopLoc_Location(), 0);
       if (T && !(T.IsNull && T.IsNull())) {
         const tri = T.get ? T.get() : T, nt = tri.NbTriangles();
-        for (const i of [...new Set([1, Math.ceil(nt / 3), Math.ceil(2 * nt / 3), nt])]) {
+        // [v1.13.1] fino a 12 triangoli distribuiti (prima 4: le facce piccole vicine a una grande venivano attribuite alla grande)
+        for (const i of [...new Set([...Array(Math.min(12, nt)).keys()].map(k => 1 + Math.floor(k * nt / Math.min(12, nt))))]) {
           if (i < 1) continue; const tr = tri.Triangle(i), ps = [1, 2, 3].map(j => tri.Node(tr.Value(j)));
           pts.push([(ps[0].X() + ps[1].X() + ps[2].X()) / 3, (ps[0].Y() + ps[1].Y() + ps[2].Y()) / 3, (ps[0].Z() + ps[1].Z() + ps[2].Z()) / 3]);
         }
@@ -2936,7 +3033,10 @@
         const ev = new oc.TopExp_Explorer(f, oc.TopAbs_ShapeEnum.TopAbs_VERTEX, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
         for (; ev.More(); ev.Next()) { const q = oc.BRep_Tool.Pnt(oc.TopoDS.Vertex(ev.Current())); pts.push([q.X(), q.Y(), q.Z()]); }
       }
-      faces.push({ valid: az.IsValid(f), area: g.Mass(), pts });
+      // tipo di superficie: serve ad attribuire la faccia solo a regioni compatibili (un piano non può essere una B-spline vicina)
+      const ty = new oc.BRepAdaptor_Surface(f, true).GetType(), G = oc.GeomAbs_SurfaceType;
+      const kind = ty === G.GeomAbs_Plane ? 'plane' : ty === G.GeomAbs_Cylinder ? 'cylinder' : ty === G.GeomAbs_Cone ? 'cone' : ty === G.GeomAbs_Sphere ? 'sphere' : ty === G.GeomAbs_Torus ? 'torus' : ty === G.GeomAbs_BSplineSurface ? 'bspline' : 'other';
+      faces.push({ valid: az.IsValid(f), area: g.Mass(), pts, kind });
     }
     const gv = new oc.GProp_GProps(); oc.BRepGProp.VolumeProperties(sh, gv, false, false, false);
     let solids = 0; const es = new oc.TopExp_Explorer(sh, oc.TopAbs_ShapeEnum.TopAbs_SOLID, oc.TopAbs_ShapeEnum.TopAbs_SHAPE); for (; es.More(); es.Next()) solids++;

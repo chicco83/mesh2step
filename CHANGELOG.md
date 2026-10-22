@@ -1,5 +1,29 @@
 # CHANGELOG — Mesh2STEP
-Versione documento: 1.13.0 — 2026-10-21 22:59
+Versione documento: 1.13.1 — 2026-10-22 09:19
+
+## 24. [1.13.1] — 2026-10-22 09:19 — Trovata la causa delle facce «ritagliate male»
+- **Causa**: i bordi lunghi fatti di pochi punti erano scritti come una sola B-spline di grado 1 (polilinea). Lo STEP non conteneva la curva 2D della faccia (PCURVE), quindi OpenCASCADE la ricavava per approssimazione e **smussava gli angoli** del bordo. Sul Plenum un piano con bordo 3D di 1 199,9 mm² diventava una faccia di 1 427,9 mm² (volume −15%).
+- **Correzione**: le polilinee accanto a un piano o a una regione a triangoli diventano **una catena di spigoli rettilinei** (LINE), con vertici intermedi condivisi dalle due facce. Ogni spigolo ha la sua **PCURVE esplicita** (retta 2D) sui piani e sulle facce a triangoli: la proiezione di una retta su un piano è esatta. Origine del piano: baricentro dei vertici (minimi quadrati). Opzioni del core: `pcurves: false` e `polylineEdges: true` per tornare al comportamento precedente.
+- **Ripiego più completo** (`facetRegionsAt`):
+  - una faccia a triangoli uniti (gruppo complanare) che resta non valida viene esportata un triangolo per faccia (`singleTris`);
+  - se anche il triangolo singolo resta non valido, passano a triangoli le regioni analitiche adiacenti, perché il difetto sta nello spigolo condiviso.
+- I punti intermedi più vicini di tol/4 vengono tolti dalla catena di rette: un segmento di circa 0,002 mm diventava uno spigolo chiuso su un solo vertice.
+- **Risultati sul Plenum con «STEP validato»**:
+
+  | Tolleranza | Esportazione semplice | STEP validato | Volume validato |
+  |---|---|---|---|
+  | 0,01 | 237 facce, 8 non valide, volume −1,8% | **valido, 2 277 facce** | 49 957 (−0,8%) |
+  | 0,02 | 289 facce, 3 non valide, volume −1,2% | **valido, 1 933 facce** | 49 929 (−0,9%) |
+
+  Il volume della mesh è 50 378. La 1.13.0 dava 3 669 facce validate (+0,28%) e −15% di volume nell'esportazione semplice.
+- **Campioni**: 28/28 validi; scoop 6 692,14 (era 6 614,98), vase 27 431,05 (era 27 419,14), gli altri invariati.
+- **Provato e scartato**:
+  - Spezzare in rette tutte le polilinee: le facce B-spline vicine diventavano NotClosed (scoop non valido).
+  - Spezzarle anche quando i segmenti sono lunghi (media > diag/50 o diag/200): Plenum 2 984 facce invece di 3 034, ma scoop non valido.
+  - PCURVE sulle B-spline (proiezione nei nodi): anelli 2D non chiusi in 28 facce del Plenum. Ora sono disattivate, si riattivano con l'opzione `bsplinePcurves`.
+  - Confronto del contributo al volume invece dell'area: più rumoroso.
+- **Diagnosi** (script `inv.py`, non nel repo, con OCP in Python): per ogni faccia non valida stampa il tipo, l'area e il riquadro, poi per ogni anello `ShapeAnalysis_Wire(wire, face, 1e-4)` (`CheckClosed`, `CheckGaps3d`, `CheckGaps2d`), i vertici e la tolleranza di ogni spigolo (`BRep_Tool.Tolerance_s`). Uno spigolo chiuso su un vertice con tolleranza > 0 è il segno di un buco 2D chiuso dal lettore.
+- **Limite**: restano a triangoli le regioni B-spline accanto ad altre B-spline e alcune sfere. Lì la polilinea resta tale e OpenCASCADE ricava ancora la pcurve. Il passo successivo sono PCURVE corrette sulle B-spline: proiezione inversa vera, non verticale.
 
 ## 23. [1.13.0] — 2026-10-21 22:59 — OpenCASCADE nel browser: STEP validato con ripiego per regione (come SimpleCAD)
 - **OpenCASCADE in WebAssembly**: `vendor/replicad_single.js` + `.wasm` (replicad-opencascadejs 1.1.0, LGPL-2.1, ~23 MB invece dei 66 MB di opencascade.js), caricati nel Worker solo alla prima richiesta e poi tenuti nella cache del service worker. Non inclusi nella build a file singolo (`dist/`): lì il comando risponde con un messaggio.
