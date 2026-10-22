@@ -1,5 +1,5 @@
 # MANUALE — Mesh2STEP
-Versione documento: 1.13.2 — 2026-10-22 11:17
+Versione documento: 1.13.3 — 2026-10-22 12:13
 <!-- [2026-10-06 13:45] versione precedente 1.0.0 (2026-10-05 17:10) nel repository git (commit 729f9ed). -->
 
 ## 1. Avvio
@@ -58,7 +58,7 @@ Il colore dipende **solo dal tipo** di superficie (dalla 1.3.1): facce vicine de
 ### STEP validato con OpenCASCADE (dalla 1.13.0)
 - **STEP validato (OpenCASCADE)** (sezione Export) controlla lo STEP con lo stesso motore B-rep dei CAD (OpenCASCADE). Le regioni con facce non valide o con area diversa da quella dei loro triangoli vengono esportate a triangoli finché lo STEP è valido (al massimo 4 giri), poi il file viene scaricato. Il riquadro mostra i giri: facce, facce lette da OCC, facce non valide (✗), volume, regioni passate a triangoli (▲).
 - Dalla 1.13.1 i bordi accanto ai piani sono scritti come rette con curva 2D esplicita (PCURVE), quindi servono molte meno regioni a triangoli (file Plenum: da 3 669 a circa 2 000 facce). Se una faccia a triangoli resta non valida, viene scomposta in triangoli singoli e, se serve, passano a triangoli anche le regioni vicine. Una tolleranza più alta (es. 0,02) dà meno facce.
-- Opzioni del core per gli sviluppatori (`exportSTEP` / `stepValidated`): `pcurves: false` (niente PCURVE), `polylineEdges: true` (polilinee come una sola B-spline di grado 1, come fino alla 1.13.0), `bsplinePcurves: true` (PCURVE sulle B-spline con proiezione verticale) o `'near'` (proiezione inversa, 1.13.2): entrambe sperimentali e peggiori dell'impostazione predefinita sul Plenum.
+- Opzioni del core per gli sviluppatori (`exportSTEP` / `stepValidated`): `pcurves: false` (niente PCURVE), `polylineEdges: true` (polilinee come una sola B-spline di grado 1, come fino alla 1.13.0), `bsplinePcurves: true` (PCURVE sulle B-spline con proiezione verticale) o `'near'` (proiezione inversa, 1.13.2); `bsplineSnap: true` (1.13.3) porta i vertici condivisi sulla B-spline: sul Plenum a tol 0,01 dà 2 037 facce invece di 2 277, ma a tol 0,02 peggiora e scoop non è più valido: entrambe sperimentali e peggiori dell'impostazione predefinita sul Plenum.
 - Al primo uso scarica ~23 MB (poi restano nella cache, anche offline). Non disponibile nella versione a file singolo.
 - Uno STEP «validato» può avere molte più facce: è il prezzo per la correttezza dove le superfici adattate non bastano.
 

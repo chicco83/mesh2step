@@ -1,5 +1,11 @@
 # CHANGELOG — Mesh2STEP
-Versione documento: 1.13.2 — 2026-10-22 11:17
+Versione documento: 1.13.3 — 2026-10-22 12:13
+
+## 26. [1.13.3] — 2026-10-22 12:13 — Vertici condivisi portati sulla B-spline (opzionale, spento)
+- Opzione `bsplineSnap: true` di `exportSTEP`/`stepValidated`: i vertici toccati da una B-spline aperta si spostano sulla sua superficie (proiezione verticale; media se le B-spline sono più d'una; solo se lo spostamento è ≤ tol). `posOf(v)` alimenta `VERTEX_POINT` e le estremità delle catene.
+- **Plenum (STEP validato, tol 0,01)**: 2 277 → **2 037 facce** (valido; volume +0,37% invece di −0,8%). Con `bsplinePcurves: 'near'` in più: 2 302 (peggio). A tol 0,02: 1 933 → 2 447 (peggio).
+- **Campioni**: acceso di default `scoop.step` diventava non valido nell'esportazione semplice (27/28), quindi **resta spento**; con l'opzione spenta 28/28 validi e tutti i test ok.
+- Conclusione: la causa dei vertici fuori superficie spiega solo in parte le regioni B-spline mal ritagliate; il risultato dipende dalla tolleranza. Non c'è un'impostazione vincente su tutti i casi.
 
 ## 25. [1.13.2] — 2026-10-22 11:17 — Proiezione inversa sulle B-spline (opzionale, non attiva)
 - `fitBSpline` ora espone `uvNear(p)`: parametri (u, v) del punto della B-spline **più vicino** a p (Gauss-Newton sulle coordinate metriche della mappa di altezze, derivate per differenze finite, partenza dalla proiezione verticale, dominio rispettato). Prima si usava solo la proiezione verticale (`uvOf`).

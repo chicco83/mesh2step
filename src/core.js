@@ -1,6 +1,6 @@
 /*
  * Mesh2STEP — core.js
- * Versione: 1.13.2 — 2026-10-22 11:17 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
+ * Versione: 1.13.3 — 2026-10-22 12:13 (Europe/Rome)  [1.1.0: coni, tori, filettature, B-spline, snap, riparazione, nomi corpi, editing]
  * ---------------------------------------------------------------------------
  * Motore indipendente dalla UI (gira nel Web Worker del browser e in Node per i test).
  *   1. Parsing  : STL (binario/ASCII), OBJ, 3MF (zip letto a mano + DecompressionStream)
@@ -26,7 +26,8 @@
   // [2026-10-21 22:59 v1.13.0] const VERSION = '1.12.0';
   // [2026-10-22 09:19 v1.13.1] const VERSION = '1.13.0';
   // [2026-10-22 11:17 v1.13.2] const VERSION = '1.13.1';
-  const VERSION = '1.13.2';
+  // [2026-10-22 12:13 v1.13.3] const VERSION = '1.13.2';
+  const VERSION = '1.13.3';
 
   // ===================== Helper vettoriali (array [x,y,z]) =====================
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -2211,7 +2212,20 @@
 
     // --- geometria delle catene: LINE, CIRCLE o polilinea B-spline grado 1 ---
     const vtx = new Map();
-    const vertexPoint = v => { if (!vtx.has(v)) vtx.set(v, E(`VERTEX_POINT('',${pt(M.P(v))})`)); return vtx.get(v); };
+    // [2026-10-22 v1.13.2] prima: const vertexPoint = v => { if (!vtx.has(v)) vtx.set(v, E(`VERTEX_POINT('',${pt(M.P(v))})`)); return vtx.get(v); };
+    // opts.bsplineSnap: i vertici toccati da una B-spline aperta vengono portati sulla superficie (media delle proiezioni se più B-spline, solo se
+    // lo spostamento è ≤ tol): così le PCURVE alle estremità coincidono con la proiezione che OpenCASCADE fa degli altri spigoli della faccia.
+    const vposMemo = new Map();
+    const posOf = v => {
+      if (!opts.bsplineSnap) return M.P(v);
+      if (vposMemo.has(v)) return vposMemo.get(v);
+      const p = M.P(v), prj = [];
+      for (const e of (vEdges.get(v) || [])) for (const fi of facesOf(e)) if (!fi.faceted && fi.region.type === 'bspline' && !fi.region.closedU && fi.region.proj && !prj.some(x => x.fi === fi)) { const q = fi.region.proj(p); if (q) prj.push({ fi, q }); }
+      let res = p;
+      if (prj.length) { const m = mul(prj.reduce((a, x) => add(a, x.q), [0, 0, 0]), 1 / prj.length); if (len(sub(m, p)) <= tol) res = m; }
+      vposMemo.set(v, res); return res;
+    };
+    const vertexPoint = v => { if (!vtx.has(v)) vtx.set(v, E(`VERTEX_POINT('',${pt(posOf(v))})`)); return vtx.get(v); };
     // [2026-10-21 v1.11.2] PROIEZIONE SULLE SUPERFICI (idea presa da SimpleCAD, addon FreeCAD MIT: "ogni bordo condiviso diventa una curva che
     // sta su entrambe le superfici vicine"). Le polilinee della mesh stavano solo entro tol dalle superfici e, con triangoli lunghi, la corda
     // si allontanava di millimetri: OpenCASCADE allargava la tolleranza dello spigolo e la faccia risultava non valida.
@@ -2301,7 +2315,8 @@
       return pcs.length ? E(`SURFACE_CURVE('',${l3},(${pcs.join(',')}),.CURVE_3D.)`) : l3;
     };
     chains.forEach(ch => {
-      const pts = ch.verts.map(v => M.P(v)), p0 = pts[0], pN = pts[pts.length - 1];
+      // [2026-10-22 v1.13.2] prima: ch.verts.map(v => M.P(v)) (ora posOf: vertici sulla B-spline con opts.bsplineSnap)
+      const pts = ch.verts.map(v => posOf(v)), p0 = pts[0], pN = pts[pts.length - 1];
       const v0 = vertexPoint(ch.verts[0]), v1 = vertexPoint(ch.verts[ch.verts.length - 1]);
       let curve = null;
       // retta: tutti i punti entro tolleranza dalla congiungente estremi
