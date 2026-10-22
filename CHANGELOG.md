@@ -23,6 +23,7 @@ Versione documento: 1.13.1 — 2026-10-22 09:19
   - PCURVE sulle B-spline (proiezione nei nodi): anelli 2D non chiusi in 28 facce del Plenum. Ora sono disattivate, si riattivano con l'opzione `bsplinePcurves`.
   - Confronto del contributo al volume invece dell'area: più rumoroso.
 - **Diagnosi** (script `inv.py`, non nel repo, con OCP in Python): per ogni faccia non valida stampa il tipo, l'area e il riquadro, poi per ogni anello `ShapeAnalysis_Wire(wire, face, 1e-4)` (`CheckClosed`, `CheckGaps3d`, `CheckGaps2d`), i vertici e la tolleranza di ogni spigolo (`BRep_Tool.Tolerance_s`). Uno spigolo chiuso su un vertice con tolleranza > 0 è il segno di un buco 2D chiuso dal lettore.
+- **Riprovato dopo il rilascio** (`bsplinePcurves: true` con la suddivisione attuale, Plenum tol 0,01): peggiora (5 giri, 3 778 facce, 1 non valida). Resta disattivato; serve una proiezione inversa vera, non verticale. CI GitHub verde sul push 1.13.1.
 - **Limite**: restano a triangoli le regioni B-spline accanto ad altre B-spline e alcune sfere. Lì la polilinea resta tale e OpenCASCADE ricava ancora la pcurve. Il passo successivo sono PCURVE corrette sulle B-spline: proiezione inversa vera, non verticale.
 
 ## 23. [1.13.0] — 2026-10-21 22:59 — OpenCASCADE nel browser: STEP validato con ripiego per regione (come SimpleCAD)
